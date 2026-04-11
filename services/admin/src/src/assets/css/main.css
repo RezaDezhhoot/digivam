@@ -1,0 +1,428 @@
+@import 'bootstrap/dist/css/bootstrap.rtl.min.css';
+@import '@fontsource/vazirmatn/400.css';
+@import '@fontsource/vazirmatn/700.css';
+
+:root {
+  --admin-primary: #0b5f83;
+  --admin-primary-light: #e8f4fa;
+  --admin-accent: #22a06b;
+  --admin-bg: #f0f4f8;
+  --admin-text: #1a2b3c;
+  --admin-surface: #ffffff;
+  --admin-surface-soft: #f7fafc;
+  --admin-border: #e2e8f0;
+  --admin-muted: #64748b;
+  --admin-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.04);
+  --admin-shadow-lg: 0 8px 32px rgba(0,0,0,0.08);
+  --panel-motion-duration: 0.55s;
+  --sidebar-width: 272px;
+}
+
+:root[data-theme='dark'] {
+  --admin-primary: #5bb2d9;
+  --admin-primary-light: rgba(91,178,217,0.12);
+  --admin-accent: #56d39b;
+  --admin-bg: #0f1923;
+  --admin-text: #e2e8f0;
+  --admin-surface: #1a2332;
+  --admin-surface-soft: #1e2d3d;
+  --admin-border: #2d3f52;
+  --admin-muted: #8fa3b8;
+  --admin-shadow: 0 1px 3px rgba(0,0,0,0.2), 0 4px 16px rgba(0,0,0,0.15);
+  --admin-shadow-lg: 0 8px 32px rgba(0,0,0,0.25);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background: var(--admin-bg);
+  color: var(--admin-text);
+  font-family: 'Vazirmatn', Tahoma, sans-serif;
+  min-height: 100vh;
+  margin: 0;
+}
+
+#app { min-height: 100vh; }
+
+/* --- Card --- */
+.card {
+  border-radius: 16px;
+  border: 1px solid var(--admin-border);
+  background: var(--admin-surface);
+  box-shadow: var(--admin-shadow);
+  transition: box-shadow 0.25s ease, transform 0.25s ease, border-color 0.25s ease;
+}
+
+.card:hover {
+  box-shadow: var(--admin-shadow-lg);
+  transform: translateY(-4px);
+}
+
+/* --- Forms --- */
+.form-control,
+.form-select {
+  background-color: var(--admin-surface);
+  color: var(--admin-text);
+  border-color: var(--admin-border);
+  border-radius: 10px;
+  min-height: 44px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--admin-primary);
+  box-shadow: 0 0 0 3px rgba(11,95,131,0.12);
+}
+
+.form-label-required::after {
+  content: ' *';
+  color: #dc2626;
+  font-weight: 800;
+}
+
+.form-label-optional::after {
+  content: ' (اختیاری)';
+  color: var(--admin-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.form-label-note {
+  color: var(--admin-muted);
+  font-size: 12px;
+  font-weight: 500;
+  margin-inline-start: 4px;
+}
+
+.form-label {
+  color: var(--admin-text);
+}
+
+/* --- Table --- */
+.table,
+.table > :not(caption) > * > *,
+.alert-light {
+  background-color: var(--admin-surface);
+  color: var(--admin-text);
+  border-color: var(--admin-border);
+}
+
+.text-muted { color: var(--admin-muted) !important; }
+
+.table-striped > tbody > tr:nth-of-type(odd) > * {
+  background-color: var(--admin-surface-soft);
+}
+
+.table thead th {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--admin-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-bottom-width: 2px;
+}
+
+/* --- Buttons --- */
+.btn { border-radius: 10px; font-weight: 600; transition: all 0.2s ease; }
+
+.btn-primary {
+  background-color: var(--admin-primary);
+  border-color: var(--admin-primary);
+}
+
+.btn-primary:hover,
+.btn-primary:focus {
+  background-color: #084764;
+  border-color: #084764;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(11,95,131,0.25);
+}
+
+.btn-outline-danger:hover { transform: translateY(-1px); }
+.btn-outline-primary:hover { transform: translateY(-1px); }
+
+/* --- Loading spinner --- */
+.spinner-overlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  gap: 12px;
+  color: var(--admin-muted);
+}
+
+.spinner-overlay i {
+  font-size: 24px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* --- Fade in animations --- */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes panelReveal {
+  from {
+    opacity: 0;
+    transform: translateY(22px) scale(0.985);
+    filter: blur(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+.animate-in {
+  animation: fadeInUp 0.35s ease forwards;
+}
+
+.animate-in > * {
+  opacity: 0;
+  animation: panelReveal var(--panel-motion-duration) cubic-bezier(0.2, 0.9, 0.2, 1) forwards;
+}
+
+.animate-in > *:nth-child(1) { animation-delay: 0.03s; }
+.animate-in > *:nth-child(2) { animation-delay: 0.08s; }
+.animate-in > *:nth-child(3) { animation-delay: 0.13s; }
+.animate-in > *:nth-child(4) { animation-delay: 0.18s; }
+.animate-in > *:nth-child(5) { animation-delay: 0.23s; }
+
+.animate-in > *:is(.row, .stats-grid) {
+  animation-duration: 0.6s;
+}
+
+/* --- Page transition for inner views --- */
+.page-enter-active,
+.page-leave-active {
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(10px);
+}
+.page-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+/* --- Toast override --- */
+.Vue-Toastification__toast {
+  font-family: 'Vazirmatn', Tahoma, sans-serif !important;
+  border-radius: 12px !important;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+}
+
+:root[data-theme='dark'] .text-dark,
+:root[data-theme='dark'] .text-body,
+:root[data-theme='dark'] .text-body-emphasis,
+:root[data-theme='dark'] .text-black,
+:root[data-theme='dark'] .text-secondary {
+  color: var(--admin-text) !important;
+}
+
+:root[data-theme='dark'] input::placeholder,
+:root[data-theme='dark'] textarea::placeholder,
+:root[data-theme='dark'] .form-control::placeholder,
+:root[data-theme='dark'] .form-select::placeholder {
+  color: var(--admin-muted);
+  opacity: 1;
+}
+
+:root[data-theme='dark'] .form-control:disabled,
+:root[data-theme='dark'] .form-select:disabled {
+  color: var(--admin-muted);
+  background-color: var(--admin-surface-soft);
+}
+
+:root[data-theme='dark'] .composer-card .form-label,
+:root[data-theme='dark'] .composer-card label,
+:root[data-theme='dark'] .list-card .form-label,
+:root[data-theme='dark'] .list-card label {
+  color: var(--admin-text) !important;
+}
+
+:root[data-theme='dark'] .chip-gray,
+:root[data-theme='dark'] .status-closed {
+  background: rgba(148, 163, 184, 0.16) !important;
+  color: #dce6f2 !important;
+}
+
+:root[data-theme='dark'] .chip-blue,
+:root[data-theme='dark'] .doc-pill {
+  background: rgba(91, 178, 217, 0.16) !important;
+  color: #c7ecff !important;
+}
+
+:root[data-theme='dark'] .chip-green,
+:root[data-theme='dark'] .status-read {
+  background: rgba(34, 160, 107, 0.16) !important;
+  color: #baf4d7 !important;
+}
+
+:root[data-theme='dark'] .chip-red,
+:root[data-theme='dark'] .status-unread {
+  background: rgba(248, 113, 113, 0.16) !important;
+  color: #fecaca !important;
+}
+
+:root[data-theme='dark'] .chip-yellow,
+:root[data-theme='dark'] .status-pending {
+  background: rgba(245, 158, 11, 0.18) !important;
+  color: #fde68a !important;
+}
+
+:root[data-theme='dark'] .chip-purple,
+:root[data-theme='dark'] .doc-pill-more {
+  background: rgba(167, 139, 250, 0.18) !important;
+  color: #ddd6fe !important;
+}
+
+:root[data-theme='dark'] .btn-light,
+:root[data-theme='dark'] .btn-outline-secondary,
+:root[data-theme='dark'] .dropdown-menu,
+:root[data-theme='dark'] .dropdown-item,
+:root[data-theme='dark'] .modal-content,
+:root[data-theme='dark'] .offcanvas,
+:root[data-theme='dark'] .list-group-item,
+:root[data-theme='dark'] .input-group-text,
+:root[data-theme='dark'] .page-link {
+  background: var(--admin-surface) !important;
+  color: var(--admin-text) !important;
+  border-color: var(--admin-border) !important;
+}
+
+:root[data-theme='dark'] .dropdown-item:hover,
+:root[data-theme='dark'] .dropdown-item:focus,
+:root[data-theme='dark'] .btn-outline-secondary:hover,
+:root[data-theme='dark'] .btn-outline-secondary:focus,
+:root[data-theme='dark'] .page-link:hover,
+:root[data-theme='dark'] .page-link:focus {
+  background: var(--admin-surface-soft) !important;
+  color: var(--admin-text) !important;
+}
+
+:root[data-theme='dark'] .document-option,
+:root[data-theme='dark'] .selected-document-item,
+:root[data-theme='dark'] .facility-tab-badge,
+:root[data-theme='dark'] .check-tile-btn,
+:root[data-theme='dark'] .entry-empty,
+:root[data-theme='dark'] .preview-frame,
+:root[data-theme='dark'] .table-thumb {
+  background: var(--admin-surface-soft) !important;
+  color: var(--admin-text) !important;
+  border-color: var(--admin-border) !important;
+}
+
+:root[data-theme='dark'] .transaction-tab {
+  background: linear-gradient(180deg, rgba(30, 45, 61, 0.96), rgba(26, 35, 50, 1)) !important;
+  color: var(--admin-text) !important;
+  border-color: var(--admin-border) !important;
+}
+
+:root[data-theme='dark'] .transaction-tab.active,
+:root[data-theme='dark'] .check-tile-btn.active {
+  background: linear-gradient(180deg, rgba(91, 178, 217, 0.18), rgba(30, 45, 61, 0.96)) !important;
+  border-color: rgba(91, 178, 217, 0.34) !important;
+  color: var(--admin-text) !important;
+}
+
+:root[data-theme='dark'] .today-card-icon {
+  background: rgba(15, 23, 42, 0.38) !important;
+  color: #c7ecff !important;
+}
+
+:root[data-theme='dark'] .warning-card,
+:root[data-theme='dark'] .attention-card,
+:root[data-theme='dark'] .warning-tone,
+:root[data-theme='dark'] .attention-tone,
+:root[data-theme='dark'] .today-card-amber,
+:root[data-theme='dark'] .facility-mini-card-warning,
+:root[data-theme='dark'] .value-chip-alt {
+  background: rgba(245, 158, 11, 0.16) !important;
+  color: #fde68a !important;
+  border-color: rgba(245, 158, 11, 0.24) !important;
+}
+
+:root[data-theme='dark'] .danger-card,
+:root[data-theme='dark'] .today-card-rose,
+:root[data-theme='dark'] .facility-mini-card-danger,
+:root[data-theme='dark'] .editing-chip,
+:root[data-theme='dark'] .value-chip,
+:root[data-theme='dark'] .type-chip-none-banking {
+  background: rgba(248, 113, 113, 0.16) !important;
+  color: #fecaca !important;
+  border-color: rgba(248, 113, 113, 0.24) !important;
+}
+
+:root[data-theme='dark'] .neutral-card,
+:root[data-theme='dark'] .neutral-tone,
+:root[data-theme='dark'] .facility-mini-card-muted {
+  background: rgba(148, 163, 184, 0.14) !important;
+  color: #dce6f2 !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+}
+
+:root[data-theme='dark'] .today-card-blue,
+:root[data-theme='dark'] .facility-mini-card-info,
+:root[data-theme='dark'] .type-chip-banking {
+  background: rgba(91, 178, 217, 0.18) !important;
+  color: #c7ecff !important;
+  border-color: rgba(91, 178, 217, 0.24) !important;
+}
+
+:root[data-theme='dark'] .today-card-green,
+:root[data-theme='dark'] .facility-mini-card-success {
+  background: rgba(34, 160, 107, 0.16) !important;
+  color: #baf4d7 !important;
+  border-color: rgba(34, 160, 107, 0.24) !important;
+}
+
+:root[data-theme='dark'] .composer-card,
+:root[data-theme='dark'] .recipient-info-card,
+:root[data-theme='dark'] .recipient-info-item,
+:root[data-theme='dark'] .composer-card .form-label,
+:root[data-theme='dark'] .composer-card .form-control,
+:root[data-theme='dark'] .composer-card .form-select,
+:root[data-theme='dark'] .composer-card input,
+:root[data-theme='dark'] .composer-card textarea,
+:root[data-theme='dark'] .composer-card select {
+  color: var(--admin-text) !important;
+}
+
+:root[data-theme='dark'] .composer-card .form-control,
+:root[data-theme='dark'] .composer-card .form-select,
+:root[data-theme='dark'] .composer-card input,
+:root[data-theme='dark'] .composer-card textarea,
+:root[data-theme='dark'] .composer-card select,
+:root[data-theme='dark'] .select2-container .select2-selection--single,
+:root[data-theme='dark'] .select2-dropdown,
+:root[data-theme='dark'] .select2-search__field,
+:root[data-theme='dark'] .select2-results__option {
+  background: var(--admin-surface) !important;
+  color: var(--admin-text) !important;
+  border-color: var(--admin-border) !important;
+}
+
+:root[data-theme='dark'] .composer-card .form-control::placeholder,
+:root[data-theme='dark'] .composer-card textarea::placeholder,
+:root[data-theme='dark'] .select2-search__field::placeholder {
+  color: var(--admin-muted) !important;
+  opacity: 1;
+}
+
+:root[data-theme='dark'] .select2-container--default .select2-selection--single .select2-selection__rendered,
+:root[data-theme='dark'] .select2-container--default .select2-selection--single .select2-selection__placeholder,
+:root[data-theme='dark'] .select2-container--default .select2-results__option--selected {
+  color: var(--admin-text) !important;
+}
+

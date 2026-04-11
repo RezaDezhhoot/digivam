@@ -1,0 +1,27 @@
+{
+  "name": "dgvam-backend",
+  "version": "1.0.0",
+  "description": "DGVam backend service",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "migrate": "node src/scripts/migrate.js",
+    "lint": "echo \"No lint config yet\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "dotenv": "^16.6.1",
+    "express": "^5.1.0",
+    "express-validator": "^7.3.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.2",
+    "mysql2": "^3.15.2",
+    "node-cron": "^4.2.1",
+    "sequelize": "^6.37.7"
+  }
+}

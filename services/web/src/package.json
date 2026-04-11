@@ -1,0 +1,27 @@
+{
+  "name": "dgvam-web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 3010",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 3010"
+  },
+  "dependencies": {
+    "@fontsource/vazirmatn": "^5.2.6",
+    "@fortawesome/fontawesome-free": "^6.7.2",
+    "bootstrap": "^5.3.7",
+    "html2pdf.js": "^0.14.0",
+    "jquery": "^3.7.1",
+    "persian-date": "^1.1.0",
+    "persian-datepicker": "^1.2.0",
+    "swiper": "^11.2.6",
+    "vue": "^3.5.17",
+    "vue-router": "^4.5.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.0",
+    "vite": "^7.0.6"
+  }
+}
