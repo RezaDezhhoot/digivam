@@ -31,6 +31,7 @@ export class Driver extends PaymentDriver {
     this.invoice.totalAmount = this.getAmount();
     this.invoice.payableData = this.payable || null;
     this.invoice.userId = context.userId || null;
+    this.invoice.userModel = context.userModel || null;
     this.invoice.ip = context.ip || null;
     this.invoice.payableType = context.payableType || null;
     this.invoice.payableId = context.payableId || null;

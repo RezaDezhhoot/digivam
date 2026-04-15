@@ -66,6 +66,11 @@ export const Invoice = sequelize.define(
       allowNull: true,
       field: 'user_id'
     },
+    userModel: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      field: 'user_model'
+    },
     payableType: {
       type: DataTypes.STRING,
       allowNull: true,
@@ -103,3 +108,9 @@ export const Invoice = sequelize.define(
     deletedAt: 'deleted_at'
   }
 );
+
+Invoice.USER_MODELS = Object.freeze({
+  ADMIN: 'admin',
+  BROKER: 'broker',
+  CUSTOMER: 'customer'
+});

@@ -146,6 +146,7 @@ export const createBrokerWalletCharge = async (req, res, next) => {
 
     const driver = await payment.makeInvoice(Invoice.build(), {
       userId: broker.id,
+      userModel: Invoice.USER_MODELS.BROKER,
       ip: req.ip,
       payableType: INVOICE_PAYABLE_TYPE,
       payableId: wallet.id
@@ -180,6 +181,7 @@ export const verifyBrokerWalletCharge = async (req, res, next) => {
       where: {
         transactionId: authority,
         userId: req.auth.sub,
+        userModel: Invoice.USER_MODELS.BROKER,
         payableType: INVOICE_PAYABLE_TYPE,
         payableId: wallet.id
       },

@@ -153,7 +153,6 @@ onMounted(async () => {
           <h1 class="page-title">تراکنش های سامانه</h1>
           <p class="page-subtitle">تمام فاکتورهای پرداخت و تراکنش‌های کیف پول را از یکجا مدیریت و بررسی کنید.</p>
         </div>
-                <th>موضوع</th>
       </div>
       <div class="transaction-stats">
         <div class="stat-chip">
@@ -218,7 +217,7 @@ onMounted(async () => {
             </select>
           </div>
           <div>
-            <label class="filter-label">نوع دارنده کیف پول</label>
+            <label class="filter-label">پرداخت کننده</label>
             <select v-model="invoiceFilters.holderType" class="form-select" @change="applyInvoiceFilters">
               <option value="">همه</option>
               <option value="broker">کارگزار</option>
@@ -249,7 +248,7 @@ onMounted(async () => {
             <thead>
               <tr>
                 <th>#</th>
-                <th>دارنده</th>
+                <th>پرداخت کننده</th>
                 <th>نوع</th>
                 <th>مبلغ</th>
                 <th>وضعیت</th>
@@ -259,20 +258,17 @@ onMounted(async () => {
               </tr>
             </thead>
             <tbody>
-                <td>
-                  <div class="holder-cell-title">{{ item?.subjectLabel || '-' }}</div>
-                  <div v-if="item?.subject" class="holder-cell-meta mt-1">{{ item?.subject }}</div>
-                </td>
               <tr v-for="item in invoiceItems" :key="item.id">
                 <td class="fw-semibold">{{ formatNumber(item.id) }}</td>
                 <td>
-                  <div class="holder-cell-title">{{ item.holderName }}</div>
-                  <div class="holder-cell-meta">{{ item.holderPhone }}</div>
-                  <div class="holder-cell-meta">{{ item.holderNationalCode }}</div>
+                  <div class="holder-cell-title">{{ item.payerName }}</div>
+                  <div class="holder-cell-meta">{{ item.payerPhone }}</div>
+                  <div class="holder-cell-meta">{{ item.payerNationalCode }}</div>
                 </td>
                 <td>
-                  <span class="type-chip type-chip-blue">{{ item.holderTypeLabel }}</span>
-                  <div class="holder-cell-meta mt-1">{{ item.driverLabel }}</div>
+                  <span class="type-chip type-chip-blue">{{ item.userModelLabel }}</span>
+                  <div class="holder-cell-meta mt-1">{{ item.subjectLabel || '-' }}</div>
+                  <div class="holder-cell-meta">{{ item.driverLabel }}</div>
                 </td>
                 <td>
                   <div class="fw-semibold">{{ formatMoney(item.totalAmount) }}</div>
@@ -359,6 +355,7 @@ onMounted(async () => {
                 <th>مبلغ</th>
                 <th>وضعیت</th>
                 <th>فاکتور مرتبط</th>
+                <th>پرداخت کننده</th>
                 <th>تاریخ</th>
               </tr>
             </thead>
@@ -384,6 +381,11 @@ onMounted(async () => {
                   <div class="holder-cell-title">{{ item.invoiceId ? `#${formatNumber(item.invoiceId)}` : '-' }}</div>
                   <div class="holder-cell-meta">{{ item.invoiceTransactionId || '-' }}</div>
                   <div class="holder-cell-meta">{{ item.invoicePaymentRef || '-' }}</div>
+                </td>
+                <td>
+                  <div class="holder-cell-title">{{ item.invoicePayerName || '-' }}</div>
+                  <div class="holder-cell-meta">{{ item.invoiceUserModelLabel || '-' }}</div>
+                  <div class="holder-cell-meta">{{ item.invoicePayerPhone || '-' }}</div>
                 </td>
                 <td>{{ formatDate(item.createdAt) }}</td>
               </tr>

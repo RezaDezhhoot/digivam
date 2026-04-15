@@ -415,6 +415,7 @@ const getPaidInvoiceForValidation = async ({ invoiceId, customerId, validationId
     where: {
       id: Number(invoiceId),
       userId: customerId,
+      userModel: Invoice.USER_MODELS.CUSTOMER,
       payableType: VALIDATION_INVOICE_PAYABLE_TYPE,
       payableId: validationId,
       status: PaymentStatus.PAID
@@ -631,6 +632,7 @@ export const startValidationPayment = async (req, res, next) => {
 
     const driver = await payment.makeInvoice(Invoice.build(), {
       userId: customer.id,
+      userModel: Invoice.USER_MODELS.CUSTOMER,
       ip: req.ip,
       payableType: VALIDATION_INVOICE_PAYABLE_TYPE,
       payableId: validation.id
@@ -668,6 +670,7 @@ export const verifyValidationPayment = async (req, res, next) => {
       where: {
         transactionId: authority,
         userId: req.auth.sub,
+        userModel: Invoice.USER_MODELS.CUSTOMER,
         payableType: VALIDATION_INVOICE_PAYABLE_TYPE,
         payableId: validationId
       },

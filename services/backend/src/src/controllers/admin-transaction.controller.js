@@ -15,6 +15,12 @@ const HOLDER_LABELS = {
   [Wallet.HOLDER_TYPES.CUSTOMER]: 'مشتری'
 };
 
+const INVOICE_USER_MODEL_LABELS = {
+  [Invoice.USER_MODELS.ADMIN]: 'ادمین',
+  [Invoice.USER_MODELS.BROKER]: 'کارگزار',
+  [Invoice.USER_MODELS.CUSTOMER]: 'مشتری'
+};
+
 const TRANSACTION_TYPE_LABELS = {
   [Transaction.TYPES.DEPOSIT]: 'واریز',
   [Transaction.TYPES.WITHDRAW]: 'برداشت'
@@ -22,6 +28,8 @@ const TRANSACTION_TYPE_LABELS = {
 
 const PAYABLE_TYPE_LABELS = {
   invoice: 'شارژ کیف پول',
+  customer_validation: 'هزینه اعتبارسنجی',
+  deal_cash_payment: 'پرداخت نقدی معامله',
   deal_settlement: 'تسویه حساب معامله',
   broker_confirmation: 'پیش‌پرداخت معامله',
   broker_withdrawal: 'درخواست برداشت',
@@ -102,7 +110,6 @@ const resolveHolder = (wallet, holderMaps) => {
       holderNationalCode: '-'
     };
   }
-
   const holder = holderMaps[wallet.holderType]?.get(Number(wallet.holderId));
   const nationalCode = wallet.holderType === Wallet.HOLDER_TYPES.ADMIN ? holder?.nationalId : holder?.nationalCode;
 
@@ -113,6 +120,57 @@ const resolveHolder = (wallet, holderMaps) => {
     holderName: holder?.name || '-',
     holderPhone: holder?.phone || holder?.email || '-',
     holderNationalCode: nationalCode || '-'
+  };
+};
+
+const resolveInvoiceUserModel = (invoice) => {
+  const fallback = String(invoice?.payableData?.holderType || invoice?.payableData?.userModel || '').trim().toLowerCase();
+  const model = String(invoice?.userModel || '').trim().toLowerCase() || fallback;
+  return Object.values(Invoice.USER_MODELS).includes(model) ? model : null;
+};
+
+const buildInvoiceUserMaps = async (invoices = []) => {
+  const brokerIds = uniqueNumbers(
+    invoices.filter((item) => resolveInvoiceUserModel(item) === Invoice.USER_MODELS.BROKER).map((item) => item.userId)
+  );
+  const customerIds = uniqueNumbers(
+    invoices.filter((item) => resolveInvoiceUserModel(item) === Invoice.USER_MODELS.CUSTOMER).map((item) => item.userId)
+  );
+  const adminIds = uniqueNumbers(
+    invoices.filter((item) => resolveInvoiceUserModel(item) === Invoice.USER_MODELS.ADMIN).map((item) => item.userId)
+  );
+
+  const [brokers, customers, admins] = await Promise.all([
+    brokerIds.length
+      ? Broker.findAll({ where: { id: brokerIds }, attributes: ['id', 'name', 'phone', 'nationalCode'] })
+      : [],
+    customerIds.length
+      ? Customer.findAll({ where: { id: customerIds }, attributes: ['id', 'name', 'phone', 'nationalCode'] })
+      : [],
+    adminIds.length
+      ? User.findAll({ where: { id: adminIds }, attributes: ['id', 'name', 'phone', 'nationalId', 'email'] })
+      : []
+  ]);
+
+  return {
+    [Invoice.USER_MODELS.BROKER]: new Map(brokers.map((item) => [Number(item.id), item])),
+    [Invoice.USER_MODELS.CUSTOMER]: new Map(customers.map((item) => [Number(item.id), item])),
+    [Invoice.USER_MODELS.ADMIN]: new Map(admins.map((item) => [Number(item.id), item]))
+  };
+};
+
+const resolveInvoicePayer = (invoice, payerMaps) => {
+  const userModel = resolveInvoiceUserModel(invoice);
+  const payer = userModel ? payerMaps[userModel]?.get(Number(invoice.userId)) : null;
+  const nationalCode = userModel === Invoice.USER_MODELS.ADMIN ? payer?.nationalId : payer?.nationalCode;
+
+  return {
+    userId: invoice?.userId ? Number(invoice.userId) : null,
+    userModel,
+    userModelLabel: userModel ? INVOICE_USER_MODEL_LABELS[userModel] || userModel : '-',
+    payerName: payer?.name || [invoice?.firstName, invoice?.lastName].filter(Boolean).join(' ').trim() || '-',
+    payerPhone: payer?.phone || payer?.email || '-',
+    payerNationalCode: nationalCode || invoice?.nationalCode || '-'
   };
 };
 
@@ -220,7 +278,7 @@ const findWalletIds = async ({ search = '', holderType = '' }) => {
   return wallets.map((item) => Number(item.id));
 };
 
-const serializeInvoice = (invoice, wallet, holder) => ({
+const serializeInvoice = (invoice, wallet, holder, payer) => ({
   id: invoice.id,
   driver: invoice.driver,
   driverLabel: driverLabel(invoice.driver),
@@ -236,15 +294,19 @@ const serializeInvoice = (invoice, wallet, holder) => ({
   lastName: invoice.lastName,
   nationalCode: invoice.nationalCode,
   ip: invoice.ip,
+  userModel: payer.userModel,
+  userModelLabel: payer.userModelLabel,
+  subjectLabel: PAYABLE_TYPE_LABELS[invoice.payableType] || invoice.payableType || null,
   payableType: invoice.payableType,
   payableId: invoice.payableId,
   createdAt: invoice.createdAt,
   updatedAt: invoice.updatedAt,
   wallet: wallet ? serializeWallet(wallet) : null,
+  ...payer,
   ...holder
 });
 
-const serializeWalletTransaction = (transaction, wallet, holder, relatedInvoice) => ({
+const serializeWalletTransaction = (transaction, wallet, holder, relatedInvoice, relatedInvoicePayer) => ({
   id: transaction.id,
   uuid: transaction.uuid,
   type: transaction.type,
@@ -260,6 +322,11 @@ const serializeWalletTransaction = (transaction, wallet, holder, relatedInvoice)
   invoicePaymentRef: relatedInvoice?.paymentRef || transaction.meta?.paymentRef || null,
   invoiceStatus: relatedInvoice?.status || null,
   invoiceStatusLabel: relatedInvoice?.status ? paymentStatusLabel(relatedInvoice.status) : null,
+  invoiceUserModel: relatedInvoicePayer?.userModel || null,
+  invoiceUserModelLabel: relatedInvoicePayer?.userModelLabel || null,
+  invoicePayerName: relatedInvoicePayer?.payerName || null,
+  invoicePayerPhone: relatedInvoicePayer?.payerPhone || null,
+  invoicePayerNationalCode: relatedInvoicePayer?.payerNationalCode || null,
   createdAt: transaction.createdAt,
   updatedAt: transaction.updatedAt,
   ...holder
@@ -278,14 +345,7 @@ export const listAdminInvoiceTransactions = async (req, res, next) => {
     }
 
     if (holderType) {
-      const holderWalletIds = await findWalletIds({ holderType });
-
-      if (!holderWalletIds.length) {
-        return res.status(200).json(createPaginationResult({ items: [], total: 0, page, limit }));
-      }
-
-      where.payableType = 'wallet';
-      where.payableId = { [Op.in]: holderWalletIds };
+      where.userModel = holderType;
     }
 
     if (search) {
@@ -328,10 +388,11 @@ export const listAdminInvoiceTransactions = async (req, res, next) => {
       : [];
     const walletMap = new Map(wallets.map((item) => [Number(item.id), item]));
     const holderMaps = await buildHolderMaps(wallets);
+    const payerMaps = await buildInvoiceUserMaps(rows);
 
     const items = rows.map((item) => {
       const wallet = walletMap.get(Number(item.payableId));
-      return serializeInvoice(item, wallet, resolveHolder(wallet, holderMaps));
+      return serializeInvoice(item, wallet, resolveHolder(wallet, holderMaps), resolveInvoicePayer(item, payerMaps));
     });
 
     return res.status(200).json(createPaginationResult({ items, total: count, page, limit }));
@@ -404,13 +465,15 @@ export const listAdminWalletTransactions = async (req, res, next) => {
       ? await Invoice.findAll({ where: { id: invoiceIds } })
       : [];
     const invoiceMap = new Map(invoices.map((item) => [Number(item.id), item]));
+    const invoicePayerMaps = await buildInvoiceUserMaps(invoices);
 
     const items = rows.map((item) => {
       const wallet = walletMap.get(Number(item.walletId));
       const holder = resolveHolder(wallet, holderMaps);
       const relatedInvoice = item.payableType === 'invoice' ? invoiceMap.get(Number(item.payableId)) : null;
+      const relatedInvoicePayer = relatedInvoice ? resolveInvoicePayer(relatedInvoice, invoicePayerMaps) : null;
 
-      return serializeWalletTransaction(item, wallet, holder, relatedInvoice);
+      return serializeWalletTransaction(item, wallet, holder, relatedInvoice, relatedInvoicePayer);
     });
 
     return res.status(200).json(createPaginationResult({ items, total: count, page, limit }));

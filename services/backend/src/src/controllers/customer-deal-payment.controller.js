@@ -195,6 +195,7 @@ export const startDealCashPayment = async (req, res, next) => {
 
     const driver = await payment.makeInvoice(Invoice.build(), {
       userId: customerId,
+      userModel: Invoice.USER_MODELS.CUSTOMER,
       ip: req.ip,
       payableType: DEAL_CASH_PAYMENT_PAYABLE_TYPE,
       payableId: paymentTypeId
@@ -233,6 +234,7 @@ export const verifyDealCashPayment = async (req, res, next) => {
       where: {
         transactionId: authority,
         userId: customerId,
+        userModel: Invoice.USER_MODELS.CUSTOMER,
         payableType: DEAL_CASH_PAYMENT_PAYABLE_TYPE,
         payableId: paymentTypeId
       },
