@@ -10,6 +10,7 @@ import {
 } from '../services/admin-api.js';
 import { useConfirm } from '../composables/useConfirm.js';
 import { useAppToast } from '../composables/useToast.js';
+import { extractRawAmountInput, formatAmountInWords, formatAmountInputDisplay } from '../../../../web/src/src/utils/amount.js';
 
 const toast = useAppToast();
 const { confirm } = useConfirm();
@@ -627,8 +628,8 @@ onBeforeUnmount(() => {
           </div>
           <div class="col-6 col-lg-3">
             <label class="form-label form-label-optional">مبلغ</label>
-            <input v-model="form.amount" type="number" min="0" class="form-control" placeholder="10000" />
-            <small v-if="Number(form.amount)" class="text-muted d-block mt-1">{{ formatMoney(form.amount) }}</small>
+            <input :value="formatAmountInputDisplay(form.amount)" type="text" class="form-control" inputmode="numeric" dir="ltr" placeholder="10000" @input="form.amount = extractRawAmountInput($event.target.value)" />
+            <small v-if="Number(form.amount)" class="text-muted d-block mt-1">{{ formatAmountInWords(form.amount) }}</small>
           </div>
           <div class="col-12 col-lg-6">
             <label class="form-label form-label-optional">ویدیوی آموزشی</label>

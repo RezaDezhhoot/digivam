@@ -144,6 +144,14 @@
   overflow: hidden;
 }
 
+.license-image-button {
+  all: unset;
+  width: 100%;
+  height: 100%;
+  cursor: zoom-in;
+  display: block;
+}
+
 .license-media img {
   width: 100%;
   height: 100%;
@@ -153,6 +161,77 @@
 
 .license-card:hover .license-media img {
   transform: scale(1.04);
+}
+
+.license-preview-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.72);
+  backdrop-filter: blur(10px);
+}
+
+.license-preview-dialog {
+  position: relative;
+  width: min(100%, 980px);
+  max-height: 92vh;
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 24px;
+  background: var(--web-surface, #fff);
+  border: 1px solid rgba(17, 59, 84, 0.1);
+  box-shadow: 0 32px 80px rgba(15, 23, 42, 0.28);
+}
+
+.license-preview-image {
+  width: 100%;
+  max-height: calc(92vh - 120px);
+  object-fit: contain;
+  border-radius: 18px;
+  background: #fff;
+}
+
+.license-preview-caption strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.license-preview-caption p {
+  margin: 0;
+  color: var(--web-muted, #64748b);
+  line-height: 1.9;
+}
+
+.license-preview-close {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #fff;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.license-preview-fade-enter-active,
+.license-preview-fade-leave-active {
+  transition: opacity 0.18s ease;
+}
+
+.license-preview-fade-enter-from,
+.license-preview-fade-leave-to {
+  opacity: 0;
 }
 
 .license-media-placeholder {
@@ -201,7 +280,7 @@
   border-radius: 14px;
   font-size: 13px;
   font-weight: 700;
-  color: #6a0000;
+  color: var(--web-primary);
   background: rgba(106, 0, 0, 0.06);
   border: 1px solid rgba(106, 0, 0, 0.12);
   text-decoration: none;
@@ -236,6 +315,15 @@
 
   .license-body {
     padding: 18px 18px 20px;
+  }
+
+  .license-preview-overlay {
+    padding: 12px;
+  }
+
+  .license-preview-dialog {
+    padding: 12px;
+    border-radius: 18px;
   }
 }
 
@@ -284,4 +372,21 @@
 
 :global([data-theme='dark']) .license-body h2 {
   color: #e7f2fb;
+}
+
+:global([data-theme='dark']) .license-preview-dialog {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.94), rgba(17, 24, 39, 0.98));
+  border-color: rgba(148, 163, 184, 0.18);
+}
+
+:global([data-theme='dark']) .license-preview-image {
+  background: rgba(15, 23, 42, 0.94);
+}
+
+:global([data-theme='dark']) .license-preview-caption strong {
+  color: #e7f2fb;
+}
+
+:global([data-theme='dark']) .license-preview-caption p {
+  color: #9fb1c5;
 }

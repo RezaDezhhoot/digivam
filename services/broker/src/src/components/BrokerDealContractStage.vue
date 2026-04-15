@@ -21,9 +21,15 @@ const feedbackTone = ref('info');
 const busy = ref(false);
 const resendIn = ref(0);
 const previewOpen = ref(false);
+const previewViewportRef = ref(null);
+const contractZoom = ref(1);
+const contractFitScale = ref(1);
 const canvasRef = ref(null);
 const canvasWrapRef = ref(null);
 const emptySignature = ref(true);
+
+const CONTRACT_PAGE_WIDTH = 940;
+const CONTRACT_PAGE_HEIGHT = Math.round((CONTRACT_PAGE_WIDTH * 297) / 210);
 
 let timerId = null;
 let drawing = false;
@@ -31,6 +37,17 @@ let lastPoint = null;
 let resizeFrameId = null;
 
 const contractKey = computed(() => `${props.deal?.id}-${props.deal?.contractSignedByCustomer}-${props.deal?.contractSignedByBroker}-${props.deal?.updatedAt || ''}-${String(props.deal?.contractData || '').length}`);
+const previewIsZoomed = computed(() => contractZoom.value > 1.001);
+const previewCanvasStyle = computed(() => ({
+  width: `${Math.max(CONTRACT_PAGE_WIDTH * contractFitScale.value * contractZoom.value, 280)}px`,
+  height: `${Math.max(CONTRACT_PAGE_HEIGHT * contractFitScale.value * contractZoom.value, 360)}px`
+}));
+const previewFrameStyle = computed(() => ({
+  width: `${CONTRACT_PAGE_WIDTH}px`,
+  height: `${CONTRACT_PAGE_HEIGHT}px`,
+  transform: `scale(${contractFitScale.value * contractZoom.value})`,
+  transformOrigin: 'top center'
+}));
 
 const stopTimer = () => {
   if (timerId) {
@@ -101,7 +118,25 @@ const scheduleCanvasSetup = () => {
 
   resizeFrameId = window.requestAnimationFrame(() => {
     setupCanvas();
+    if (previewOpen.value) {
+      updatePreviewScale();
+    }
   });
+};
+
+const updatePreviewScale = () => {
+  const viewport = previewViewportRef.value;
+  if (!viewport) {
+    return;
+  }
+
+  const availableWidth = Math.max(viewport.clientWidth - (window.innerWidth <= 767 ? 20 : 40), 280);
+  const availableHeight = Math.max(viewport.clientHeight - (window.innerWidth <= 767 ? 20 : 40), 360);
+  contractFitScale.value = Math.min(availableWidth / CONTRACT_PAGE_WIDTH, availableHeight / CONTRACT_PAGE_HEIGHT, 1);
+};
+
+const changePreviewZoom = (delta) => {
+  contractZoom.value = Math.min(2.4, Math.max(1, +(contractZoom.value + delta).toFixed(2)));
 };
 
 const clearCanvas = () => {
@@ -178,6 +213,7 @@ const openPreview = () => {
     return;
   }
 
+  contractZoom.value = 1;
   previewOpen.value = true;
 };
 
@@ -363,6 +399,16 @@ watch(signatureMode, async (value) => {
   }
 });
 
+watch(previewOpen, async (value) => {
+  if (!value) {
+    return;
+  }
+
+  contractZoom.value = 1;
+  await nextTick();
+  updatePreviewScale();
+});
+
 window.addEventListener('resize', scheduleCanvasSetup);
 
 onBeforeUnmount(() => {
@@ -465,16 +511,23 @@ onBeforeUnmount(() => {
               <div>
                 <span class="contract-kicker">پیش‌نمایش کامل قرارداد</span>
                 <h4>نمایش تمام‌صفحه قرارداد</h4>
-                <p>قرارداد را در ابعاد کامل مرور کنید و در صورت نیاز PDF بگیرید.</p>
+                <p>قرارداد در حالت عادی متناسب با کادر نمایش داده می‌شود و با زوم بیشتر اسکرول فعال خواهد شد.</p>
               </div>
               <div class="contract-preview-modal-actions">
+                <div class="contract-zoom-controls">
+                  <button type="button" :disabled="contractZoom <= 1" @click="changePreviewZoom(-0.15)"><i class="fa-solid fa-minus"></i></button>
+                  <span>{{ Math.round(contractZoom * 100) }}%</span>
+                  <button type="button" :disabled="contractZoom >= 2.4" @click="changePreviewZoom(0.15)"><i class="fa-solid fa-plus"></i></button>
+                </div>
                 <button type="button" class="btn btn-outline-secondary" :disabled="busy" @click="downloadContract">دانلود PDF</button>
                 <button type="button" class="contract-otp-close" @click="previewOpen = false">×</button>
               </div>
             </div>
 
-            <div class="contract-preview-shell contract-preview-shell--fullscreen">
-              <iframe v-if="deal.contractData" :key="'fs-' + contractKey" class="contract-preview-frame contract-preview-frame--fullscreen" :srcdoc="deal.contractData"></iframe>
+            <div ref="previewViewportRef" class="contract-preview-shell contract-preview-shell--fullscreen" :class="{ 'is-zoomed': previewIsZoomed }">
+              <div class="contract-preview-canvas" :style="previewCanvasStyle">
+                <iframe v-if="deal.contractData" :key="'fs-' + contractKey" class="contract-preview-frame contract-preview-frame--fullscreen" :style="previewFrameStyle" :srcdoc="deal.contractData"></iframe>
+              </div>
             </div>
           </div>
         </div>

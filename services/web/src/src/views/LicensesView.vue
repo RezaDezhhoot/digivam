@@ -4,6 +4,7 @@ import { getLicenses } from '../services/web-loan.api.js';
 
 const loading = ref(false);
 const content = ref({});
+const previewImage = ref(null);
 
 const normalizedItems = computed(() => {
   const list = Array.isArray(content.value.items) ? content.value.items : [];
@@ -64,7 +65,9 @@ onMounted(load);
         <article v-for="(item, idx) in normalizedItems" :key="item.id" class="license-card">
           <div class="license-card-number">{{ String(idx + 1).padStart(2, '0') }}</div>
           <div class="license-media">
-            <img v-if="item.imageUrl" :src="item.imageUrl" :alt="item.title || 'license'" loading="lazy" />
+            <button v-if="item.imageUrl" type="button" class="license-image-button" @click="previewImage = item">
+              <img :src="item.imageUrl" :alt="item.title || 'license'" loading="lazy" />
+            </button>
             <div v-else class="license-media-placeholder">
               <i class="fa-solid fa-certificate"></i>
             </div>
@@ -81,6 +84,21 @@ onMounted(load);
           </div>
         </article>
       </section>
+
+      <Teleport to="body">
+        <Transition name="license-preview-fade">
+          <div v-if="previewImage?.imageUrl" class="license-preview-overlay" @click.self="previewImage = null">
+            <div class="license-preview-dialog">
+              <button type="button" class="license-preview-close" @click="previewImage = null">×</button>
+              <img class="license-preview-image" :src="previewImage.imageUrl" :alt="previewImage.title || 'license preview'" />
+              <div class="license-preview-caption">
+                <strong>{{ previewImage.title || 'تصویر مجوز' }}</strong>
+                <p v-if="previewImage.description">{{ previewImage.description }}</p>
+              </div>
+            </div>
+          </div>
+        </Transition>
+      </Teleport>
     </template>
   </div>
 </template>

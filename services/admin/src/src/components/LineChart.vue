@@ -9,18 +9,37 @@ const props = defineProps({
   emptyText: { type: String, default: 'داده‌ای برای نمایش وجود ندارد' },
   lineColor: { type: String, default: '#0b5f83' },
   fillColor: { type: String, default: 'rgba(11,95,131,0.10)' },
-  height: { type: Number, default: 220 }
+  height: { type: Number, default: 220 },
+  valueLabel: { type: String, default: 'تعداد' },
+  valueSuffix: { type: String, default: '' }
 });
 
 const canvasRef = ref(null);
 let chartInstance = null;
 
+const resolveItemTitle = (item) => item?.title || item?.date || item?.label || '';
+const resolveItemLabel = (item) => {
+  const rawValue = String(item?.label || item?.date || item?.title || '');
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(rawValue)) {
+    return rawValue.slice(5);
+  }
+
+  if (/^\d{4}-\d{2}$/.test(rawValue)) {
+    return rawValue.slice(2);
+  }
+
+  return rawValue;
+};
+
+const resolveItemValue = (item) => Number(item?.count ?? item?.value ?? 0);
+
 const buildChart = () => {
   if (!canvasRef.value || !props.items.length) return;
   if (chartInstance) chartInstance.destroy();
 
-  const labels = props.items.map((i) => i.date?.slice(5) || '');
-  const data = props.items.map((i) => i.count);
+  const labels = props.items.map((item) => resolveItemLabel(item));
+  const data = props.items.map((item) => resolveItemValue(item));
 
   chartInstance = new Chart(canvasRef.value, {
     type: 'line',
@@ -47,8 +66,8 @@ const buildChart = () => {
           rtl: true,
           textDirection: 'rtl',
           callbacks: {
-            title: (ctx) => props.items[ctx[0].dataIndex]?.date || '',
-            label: (ctx) => `تعداد: ${ctx.parsed.y.toLocaleString('fa-IR')}`
+            title: (ctx) => resolveItemTitle(props.items[ctx[0].dataIndex]) || '',
+            label: (ctx) => `${props.valueLabel}: ${ctx.parsed.y.toLocaleString('fa-IR')}${props.valueSuffix}`
           }
         }
       },

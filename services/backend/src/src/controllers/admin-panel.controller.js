@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs';
-import { Op } from 'sequelize';
+import { Op, QueryTypes } from 'sequelize';
 import { Broker } from '../models/broker.model.js';
 import { BrokerWithdrawal } from '../models/broker-withdrawal.model.js';
 import { Customer } from '../models/customer.model.js';
@@ -68,87 +68,138 @@ export const getAdminDealAnalytics = async (req, res, next) => {
     const period = String(req.query.period || 'daily');
     const now = new Date();
     let startDate;
-    let groupFormat;
+    let bucketExpression;
+    let advanceCursor;
+    let formatBucketKey;
+    let formatLabel;
+
+    const startOfDay = (value) => {
+      const nextValue = new Date(value);
+      nextValue.setHours(0, 0, 0, 0);
+      return nextValue;
+    };
+
+    const startOfWeek = (value) => {
+      const nextValue = startOfDay(value);
+      nextValue.setDate(nextValue.getDate() - nextValue.getDay());
+      return nextValue;
+    };
+
+    const startOfMonth = (value) => {
+      const nextValue = startOfDay(value);
+      nextValue.setDate(1);
+      return nextValue;
+    };
+
+    const startOfYear = (value) => {
+      const nextValue = startOfDay(value);
+      nextValue.setMonth(0, 1);
+      return nextValue;
+    };
+
+    const formatDateKey = (value) => {
+      const year = value.getFullYear();
+      const month = `${value.getMonth() + 1}`.padStart(2, '0');
+      const day = `${value.getDate()}`.padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    const formatWeekLabel = (value) => {
+      const firstDayOfYear = new Date(value.getFullYear(), 0, 1);
+      const diffInDays = Math.floor((startOfDay(value) - startOfWeek(firstDayOfYear)) / 86400000);
+      const weekNumber = Math.floor(diffInDays / 7) + 1;
+      return `${value.getFullYear()}-W${String(weekNumber).padStart(2, '0')}`;
+    };
 
     switch (period) {
       case 'daily':
-        startDate = new Date(now);
-        startDate.setDate(startDate.getDate() - 30);
-        groupFormat = '%Y-%m-%d';
+        startDate = startOfDay(new Date(now));
+        startDate.setDate(startDate.getDate() - 29);
+        bucketExpression = 'DATE(d.created_at)';
+        advanceCursor = (value) => value.setDate(value.getDate() + 1);
+        formatBucketKey = (value) => formatDateKey(value);
+        formatLabel = (value) => formatDateKey(value);
         break;
       case 'weekly':
-        startDate = new Date(now);
-        startDate.setDate(startDate.getDate() - 12 * 7);
-        groupFormat = 'YEAR_WEEK';
+        startDate = startOfWeek(new Date(now));
+        startDate.setDate(startDate.getDate() - (11 * 7));
+        bucketExpression = 'DATE(DATE_SUB(d.created_at, INTERVAL DAYOFWEEK(d.created_at) - 1 DAY))';
+        advanceCursor = (value) => value.setDate(value.getDate() + 7);
+        formatBucketKey = (value) => formatDateKey(value);
+        formatLabel = (value) => formatWeekLabel(value);
         break;
       case 'monthly':
-        startDate = new Date(now);
-        startDate.setMonth(startDate.getMonth() - 12);
-        groupFormat = '%Y-%m';
+        startDate = startOfMonth(new Date(now));
+        startDate.setMonth(startDate.getMonth() - 11);
+        bucketExpression = "DATE(DATE_FORMAT(d.created_at, '%Y-%m-01'))";
+        advanceCursor = (value) => value.setMonth(value.getMonth() + 1);
+        formatBucketKey = (value) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-01`;
+        formatLabel = (value) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}`;
         break;
       case 'yearly':
-        startDate = new Date(now);
-        startDate.setFullYear(startDate.getFullYear() - 5);
-        groupFormat = '%Y';
+        startDate = startOfYear(new Date(now));
+        startDate.setFullYear(startDate.getFullYear() - 4);
+        bucketExpression = "DATE(CONCAT(YEAR(d.created_at), '-01-01'))";
+        advanceCursor = (value) => value.setFullYear(value.getFullYear() + 1);
+        formatBucketKey = (value) => `${value.getFullYear()}-01-01`;
+        formatLabel = (value) => String(value.getFullYear());
         break;
       default:
-        startDate = new Date(now);
-        startDate.setDate(startDate.getDate() - 30);
-        groupFormat = '%Y-%m-%d';
+        startDate = startOfDay(new Date(now));
+        startDate.setDate(startDate.getDate() - 29);
+        bucketExpression = 'DATE(d.created_at)';
+        advanceCursor = (value) => value.setDate(value.getDate() + 1);
+        formatBucketKey = (value) => formatDateKey(value);
+        formatLabel = (value) => formatDateKey(value);
     }
 
-    let query;
-    if (groupFormat === 'YEAR_WEEK') {
-      query = `
-        SELECT
-          CONCAT(YEAR(d.created_at), '-W', LPAD(WEEK(d.created_at), 2, '0')) as period,
-          SUM(d.broker_confirmation_amount) as totalAmount,
-          COUNT(*) as dealCount
-        FROM deals d
-        WHERE d.broker_confirmation_amount > 0
-          AND d.created_at >= ?
-        GROUP BY YEAR(d.created_at), WEEK(d.created_at)
-        ORDER BY period ASC
-      `;
-    } else {
-      query = `
-        SELECT
-          DATE_FORMAT(d.created_at, '${groupFormat}') as period,
-          SUM(d.broker_confirmation_amount) as totalAmount,
-          COUNT(*) as dealCount
-        FROM deals d
-        WHERE d.broker_confirmation_amount > 0
-          AND d.created_at >= ?
-        GROUP BY DATE_FORMAT(d.created_at, '${groupFormat}')
-        ORDER BY period ASC
-      `;
-    }
+    const query = `
+      SELECT
+        ${bucketExpression} AS bucketDate,
+        SUM(d.broker_confirmation_amount) AS totalAmount,
+        COUNT(*) AS dealCount
+      FROM deals d
+      WHERE d.broker_confirmation_amount > 0
+        AND d.created_at >= ?
+      GROUP BY ${bucketExpression}
+      ORDER BY ${bucketExpression} ASC
+    `;
 
     const rows = await sequelize.query(query, {
       replacements: [startDate],
-      type: sequelize.QueryTypes.SELECT
+      type: QueryTypes.SELECT
     });
 
-    const formatLabel = (p) => {
-      switch (period) {
-        case 'daily':
-          return p;
-        case 'weekly':
-          return `هفته ${p.split('-W')[1] || p}`;
-        case 'monthly':
-          return `ماه ${p.split('-')[1]}`;
-        case 'yearly':
-          return p;
-        default:
-          return p;
-      }
-    };
+    const amountMap = new Map(
+      rows.map((row) => [String(row.bucketDate).slice(0, 10), Number(row.totalAmount || 0)])
+    );
 
-    const items = rows.map((row) => ({
-      label: formatLabel(row.period),
-      title: row.period,
-      value: Number(row.totalAmount || 0)
-    }));
+    const items = [];
+    const itemIndexByKey = new Map();
+    const cursor = new Date(startDate);
+    const limitDate = new Date(now);
+
+    while (cursor <= limitDate) {
+      const key = formatBucketKey(cursor);
+      const title = formatLabel(cursor);
+      itemIndexByKey.set(key, items.length);
+      items.push({
+        label: title,
+        title,
+        value: amountMap.get(key) || 0,
+        dealCount: 0
+      });
+      advanceCursor(cursor);
+    }
+
+    rows.forEach((row) => {
+      const key = String(row.bucketDate).slice(0, 10);
+      const itemIndex = itemIndexByKey.get(key);
+      if (itemIndex !== undefined) {
+        items[itemIndex].value = Number(row.totalAmount || 0);
+        items[itemIndex].dealCount = Number(row.dealCount || 0);
+      }
+    });
 
     return res.status(200).json({ items });
   } catch (error) {

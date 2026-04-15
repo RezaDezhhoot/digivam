@@ -20,6 +20,7 @@ const feedbackTone = ref('info');
 const fileInputRefs = ref({});
 const selectedCheckFiles = ref({});
 const checkFormData = ref({});
+const checkFormErrors = ref({});
 
 const paymentTypes = computed(() => (Array.isArray(props.deal?.paymentTypes) ? props.deal.paymentTypes : []));
 const allDone = computed(() => paymentTypes.value.length > 0 && paymentTypes.value.every((item) => item.status === 'done'));
@@ -37,6 +38,37 @@ const showFeedback = (text, tone = 'info') => {
 const clearFeedback = () => {
   feedbackText.value = '';
 };
+
+const getCheckErrors = (paymentTypeId) => checkFormErrors.value[paymentTypeId] || {};
+
+const setCheckErrors = (paymentTypeId, errors) => {
+  checkFormErrors.value = {
+    ...checkFormErrors.value,
+    [paymentTypeId]: errors
+  };
+};
+
+const clearCheckFieldError = (paymentTypeId, field) => {
+  if (!getCheckErrors(paymentTypeId)[field]) {
+    return;
+  }
+
+  const nextErrors = { ...getCheckErrors(paymentTypeId) };
+  delete nextErrors[field];
+  setCheckErrors(paymentTypeId, nextErrors);
+};
+
+const updateCheckField = (paymentTypeId, item, field, value) => {
+  getCheckForm(paymentTypeId, item)[field] = value;
+  clearCheckFieldError(paymentTypeId, field);
+};
+
+const createCheckForm = (item = null) => ({
+  checkDate: String(item?.values?.checkDate || '').trim(),
+  nationalCode: String(item?.values?.nationalCode || '').trim(),
+  fullName: String(item?.values?.fullName || '').trim(),
+  sayadRegistered: Boolean(item?.values?.sayadRegistered)
+});
 
 const getUploadedCheckFiles = (item) => {
   const files = Array.isArray(item?.values?.files) ? item.values.files : [];
@@ -60,6 +92,16 @@ const getUploadedCheckFiles = (item) => {
 
 const getSelectedCheckFiles = (paymentTypeId) => selectedCheckFiles.value[paymentTypeId] || [];
 
+const hasStoredCheckFiles = (item) => getUploadedCheckFiles(item).length > 0;
+
+const getCheckSubmitLabel = (item) => {
+  if (item?.status === 'done' || hasStoredCheckFiles(item)) {
+    return 'ذخیره تغییرات';
+  }
+
+  return 'ثبت اطلاعات و بارگذاری فایل‌ها';
+};
+
 const triggerCheckPicker = (paymentTypeId) => {
   fileInputRefs.value[`check-${paymentTypeId}`]?.click();
 };
@@ -75,6 +117,8 @@ const handleCheckSelection = (paymentTypeId, event) => {
     [paymentTypeId]: [...getSelectedCheckFiles(paymentTypeId), ...nextFiles]
   };
 
+  clearCheckFieldError(paymentTypeId, 'files');
+
   event.target.value = '';
 };
 
@@ -87,31 +131,43 @@ const removeSelectedCheckFile = (paymentTypeId, index) => {
   };
 };
 
-const getCheckForm = (paymentTypeId) => {
+const getCheckForm = (paymentTypeId, item = null) => {
   if (!checkFormData.value[paymentTypeId]) {
-    checkFormData.value[paymentTypeId] = { checkDate: '', nationalCode: '', fullName: '', sayadRegistered: false };
+    checkFormData.value[paymentTypeId] = createCheckForm(item);
   }
   return checkFormData.value[paymentTypeId];
 };
 
-const handleCheckUpload = async (paymentTypeId) => {
+const handleCheckUpload = async (item) => {
+  const paymentTypeId = item.id;
   const files = getSelectedCheckFiles(paymentTypeId);
-  if (!files.length) {
-    showFeedback('حداقل یک فایل انتخاب کنید.', 'error');
-    return;
+  const form = getCheckForm(paymentTypeId, item);
+  const nextErrors = {};
+
+  if (!files.length && !hasStoredCheckFiles(item)) {
+    nextErrors.files = 'حداقل یک فایل برای ثبت چک انتخاب کنید.';
   }
 
-  const form = getCheckForm(paymentTypeId);
   if (!form.checkDate) {
-    showFeedback('تاریخ چک الزامی است.', 'error');
-    return;
+    nextErrors.checkDate = 'تاریخ چک الزامی است.';
   }
+
   if (!form.nationalCode || !/^\d{10}$/.test(form.nationalCode)) {
-    showFeedback('کد ملی باید ۱۰ رقم باشد.', 'error');
-    return;
+    nextErrors.nationalCode = 'کد ملی باید ۱۰ رقم باشد.';
   }
+
   if (!form.fullName || form.fullName.trim().length < 3) {
-    showFeedback('نام و نام خانوادگی الزامی است.', 'error');
+    nextErrors.fullName = 'نام و نام خانوادگی الزامی است.';
+  }
+
+  if (!form.sayadRegistered) {
+    nextErrors.sayadRegistered = 'تایید ثبت چک در سامانه صیاد الزامی است.';
+  }
+
+  setCheckErrors(paymentTypeId, nextErrors);
+
+  if (Object.keys(nextErrors).length) {
+    showFeedback('لطفا خطاهای مشخص‌شده را اصلاح کنید.', 'error');
     return;
   }
 
@@ -222,7 +278,7 @@ const handleAdvance = async () => {
         <p v-if="item.description" class="payment-item-desc">{{ item.description }}</p>
 
         <div v-if="item.paymentType === 'check'" class="payment-check-stack">
-          <div v-if="item.status === 'done' && item.values" class="check-extra-info">
+          <div v-if="item.values" class="check-extra-info">
             <div v-if="item.values.checkDate" class="check-info-row">
               <span>تاریخ چک:</span>
               <strong>{{ item.values.checkDate }}</strong>
@@ -241,45 +297,56 @@ const handleAdvance = async () => {
             </div>
           </div>
 
-          <div v-if="isActiveStep && item.status !== 'done'" class="check-extra-form">
+          <div v-if="isActiveStep" class="check-extra-form">
+            <div class="check-form-note">
+              <i class="fa-solid fa-pen-to-square"></i>
+              <span>تا قبل از رفتن به مرحله بعد، می‌توانید اطلاعات چک و فایل‌های ثبت‌شده را ویرایش یا تکمیل کنید.</span>
+            </div>
             <div class="check-form-row">
               <label class="check-form-label">تاریخ چک <span class="check-form-required">*</span></label>
               <PersianDatePickerInput
-                :model-value="getCheckForm(item.id).checkDate"
+                :model-value="getCheckForm(item.id, item).checkDate"
                 placeholder="تاریخ چک را انتخاب کنید"
-                @update:model-value="getCheckForm(item.id).checkDate = $event"
+                @update:model-value="updateCheckField(item.id, item, 'checkDate', $event)"
               />
+              <small v-if="getCheckErrors(item.id).checkDate" class="check-form-error">{{ getCheckErrors(item.id).checkDate }}</small>
             </div>
             <div class="check-form-row">
               <label class="check-form-label">کد ملی صاحب چک <span class="check-form-required">*</span></label>
               <input
-                v-model="getCheckForm(item.id).nationalCode"
+                :value="getCheckForm(item.id, item).nationalCode"
                 type="text"
                 class="check-form-input"
                 maxlength="10"
                 placeholder="کد ملی ۱۰ رقمی"
                 inputmode="numeric"
+                @input="updateCheckField(item.id, item, 'nationalCode', $event.target.value)"
               />
+              <small v-if="getCheckErrors(item.id).nationalCode" class="check-form-error">{{ getCheckErrors(item.id).nationalCode }}</small>
             </div>
             <div class="check-form-row">
               <label class="check-form-label">نام و نام خانوادگی <span class="check-form-required">*</span></label>
               <input
-                v-model="getCheckForm(item.id).fullName"
+                :value="getCheckForm(item.id, item).fullName"
                 type="text"
                 class="check-form-input"
                 maxlength="100"
                 placeholder="نام و نام خانوادگی صاحب چک"
+                @input="updateCheckField(item.id, item, 'fullName', $event.target.value)"
               />
+              <small v-if="getCheckErrors(item.id).fullName" class="check-form-error">{{ getCheckErrors(item.id).fullName }}</small>
             </div>
             <div class="check-form-row check-form-row--checkbox">
               <label class="check-form-checkbox-label">
                 <input
-                  v-model="getCheckForm(item.id).sayadRegistered"
+                  :checked="getCheckForm(item.id, item).sayadRegistered"
                   type="checkbox"
                   class="check-form-checkbox"
+                  @change="updateCheckField(item.id, item, 'sayadRegistered', $event.target.checked)"
                 />
-                <span>چک در سامانه صیاد ثبت شده است</span>
+                <span>تایید می‌کنم چک در سامانه صیاد ثبت شده است <span class="check-form-required">*</span></span>
               </label>
+              <small v-if="getCheckErrors(item.id).sayadRegistered" class="check-form-error">{{ getCheckErrors(item.id).sayadRegistered }}</small>
             </div>
           </div>
 
@@ -340,12 +407,13 @@ const handleAdvance = async () => {
             <button
               type="button"
               class="payment-action-btn"
-              :disabled="busy || !getSelectedCheckFiles(item.id).length"
-              @click="handleCheckUpload(item.id)"
+              :disabled="busy"
+              @click="handleCheckUpload(item)"
             >
-              {{ busy ? '...' : 'بارگذاری فایل‌ها' }}
+              {{ busy ? '...' : getCheckSubmitLabel(item) }}
             </button>
           </div>
+          <small v-if="getCheckErrors(item.id).files" class="check-form-error">{{ getCheckErrors(item.id).files }}</small>
 
           <div v-else-if="item.status === 'done' && getUploadedCheckFiles(item).length" class="payment-done-note">
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>

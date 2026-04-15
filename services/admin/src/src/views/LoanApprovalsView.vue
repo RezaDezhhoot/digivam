@@ -5,6 +5,7 @@ import RecipientNotificationsPanel from '../components/RecipientNotificationsPan
 import { deleteBroker, getBrokers, updateBrokerLevel, updateBrokerSuspension, adminBrokerWalletDeposit, adminBrokerWalletWithdraw } from '../services/admin-api.js';
 import { useAppToast } from '../composables/useToast.js';
 import { useConfirm } from '../composables/useConfirm.js';
+import { extractRawAmountInput, formatAmountInWords, formatAmountInputDisplay } from '../../../../web/src/src/utils/amount.js';
 
 const toast = useAppToast();
 const { confirm } = useConfirm();
@@ -283,8 +284,8 @@ onMounted(load);
                 </p>
                 <div class="mb-3">
                   <label class="form-label">مبلغ (تومان)</label>
-                  <input v-model="walletAmount" type="number" min="1" class="form-control" placeholder="مبلغ را وارد کنید" />
-                  <small v-if="Number(walletAmount) > 0" class="text-muted d-block mt-1">{{ formatMoney(walletAmount) }}</small>
+                  <input :value="formatAmountInputDisplay(walletAmount)" type="text" class="form-control" inputmode="numeric" dir="ltr" placeholder="مبلغ را وارد کنید" @input="walletAmount = extractRawAmountInput($event.target.value)" />
+                  <small v-if="Number(walletAmount) > 0" class="text-muted d-block mt-1">{{ formatAmountInWords(walletAmount) }}</small>
                 </div>
                 <div class="mb-3">
                   <label class="form-label">توضیحات (اختیاری)</label>

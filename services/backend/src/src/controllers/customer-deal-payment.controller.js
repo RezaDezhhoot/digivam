@@ -49,20 +49,29 @@ export const uploadCheckPaymentFile = async (req, res, next) => {
       return res.status(422).json({ message: 'این روش پرداخت از نوع چک نیست' });
     }
 
+    const checkDate = String(req.body.checkDate || '').trim();
+    const nationalCode = String(req.body.nationalCode || '').trim();
+    const fullName = String(req.body.fullName || '').trim();
+    const sayadRegistered = req.body.sayadRegistered === 'true' || req.body.sayadRegistered === '1';
+
     const files = Array.isArray(req.files)
       ? req.files.filter(Boolean)
       : req.file
         ? [req.file]
         : [];
 
-    if (!files.length) {
-      return res.status(422).json({ message: 'فایل ارسال نشده است' });
-    }
+    const existingValues = paymentType.values && typeof paymentType.values === 'object' ? paymentType.values : {};
+    const existingFileIds = [
+      ...(Array.isArray(existingValues.fileIds) ? existingValues.fileIds : []),
+      ...(Array.isArray(existingValues.files) ? existingValues.files.map((item) => item?.fileId) : []),
+      existingValues.fileId
+    ]
+      .map((item) => Number(item || 0))
+      .filter((item) => Number.isFinite(item) && item > 0);
 
-    const checkDate = String(req.body.checkDate || '').trim();
-    const nationalCode = String(req.body.nationalCode || '').trim();
-    const fullName = String(req.body.fullName || '').trim();
-    const sayadRegistered = req.body.sayadRegistered === 'true' || req.body.sayadRegistered === '1';
+    if (!files.length && !existingFileIds.length) {
+      return res.status(422).json({ message: 'فایل چک الزامی است' });
+    }
 
     if (!checkDate) {
       return res.status(422).json({ message: 'تاریخ چک الزامی است' });
@@ -73,15 +82,9 @@ export const uploadCheckPaymentFile = async (req, res, next) => {
     if (!fullName || fullName.length < 3 || fullName.length > 100) {
       return res.status(422).json({ message: 'نام و نام خانوادگی الزامی است' });
     }
-
-    const existingValues = paymentType.values && typeof paymentType.values === 'object' ? paymentType.values : {};
-    const existingFileIds = [
-      ...(Array.isArray(existingValues.fileIds) ? existingValues.fileIds : []),
-      ...(Array.isArray(existingValues.files) ? existingValues.files.map((item) => item?.fileId) : []),
-      existingValues.fileId
-    ]
-      .map((item) => Number(item || 0))
-      .filter((item) => Number.isFinite(item) && item > 0);
+    if (!sayadRegistered) {
+      return res.status(422).json({ message: 'تایید ثبت چک در سامانه صیاد الزامی است' });
+    }
 
     const uploadedFileIds = [];
     for (const file of files) {
@@ -124,7 +127,11 @@ export const uploadCheckPaymentFile = async (req, res, next) => {
     );
 
     const updatedDeal = await findDealById(dealId, { customerId });
-    return res.status(200).json({ message: `${uploadedFileIds.length} فایل پرداخت بارگذاری شد`, deal: updatedDeal });
+    const message = uploadedFileIds.length > 0
+      ? 'اطلاعات چک و فایل‌های پرداخت با موفقیت ذخیره شدند'
+      : 'اطلاعات چک با موفقیت بروزرسانی شد';
+
+    return res.status(200).json({ message, deal: updatedDeal });
   } catch (error) {
     return next(error);
   }

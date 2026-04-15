@@ -9,6 +9,7 @@ import {
   verifyBrokerWalletCharge
 } from '../services/broker-wallet.api.js';
 import { useAppToast } from '../composables/useToast.js';
+import { extractRawAmountInput, formatAmountInWords, formatAmountInputDisplay } from '../../../../web/src/src/utils/amount.js';
 
 const toast = useAppToast();
 const route = useRoute();
@@ -219,14 +220,15 @@ onMounted(async () => {
               <div class="col-12 col-lg-6">
                 <label class="form-label form-label-required">مبلغ شارژ</label>
                 <input
-                  v-model="amount"
-                  type="number"
+                  :value="formatAmountInputDisplay(amount)"
+                  type="text"
                   class="form-control form-control-lg"
-                  min="500000"
-                  step="1000"
+                  inputmode="numeric"
+                  dir="ltr"
                   placeholder="مبلغ موردنظر را وارد کنید"
+                  @input="amount = extractRawAmountInput($event.target.value)"
                 />
-                <small v-if="Number(amount)" class="text-muted d-block mt-1">{{ formatMoney(amount) }}</small>
+                <small v-if="Number(amount)" class="text-muted d-block mt-1">{{ formatAmountInWords(amount) }}</small>
               </div>
               <div class="col-12 col-lg-6 d-flex justify-content-lg-end">
                 <button class="btn btn-primary btn-lg pay-btn" :disabled="submitLoading || verifying" @click="startPayment">
@@ -267,8 +269,8 @@ onMounted(async () => {
         <div class="row g-3 align-items-end">
           <div class="col-12 col-lg-6">
             <label class="form-label form-label-required">مبلغ برداشت (تومان)</label>
-            <input v-model="withdrawAmount" type="number" class="form-control" min="100000" step="1000" placeholder="حداقل ۱۰۰,۰۰۰ تومان" />
-            <small v-if="Number(withdrawAmount)" class="text-muted d-block mt-1">{{ formatMoney(withdrawAmount) }}</small>
+            <input :value="formatAmountInputDisplay(withdrawAmount)" type="text" class="form-control" inputmode="numeric" dir="ltr" placeholder="حداقل ۱۰۰,۰۰۰ تومان" @input="withdrawAmount = extractRawAmountInput($event.target.value)" />
+            <small v-if="Number(withdrawAmount)" class="text-muted d-block mt-1">{{ formatAmountInWords(withdrawAmount) }}</small>
           </div>
           <div class="col-12 col-lg-6">
             <button class="btn btn-warning" :disabled="withdrawLoading" @click="submitWithdrawal">

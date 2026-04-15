@@ -189,9 +189,14 @@
   margin: 0 0 8px;
   font-size: 16px;
   font-weight: 800;
+  color: var(--web-text);
+
 }
 
-.about-spotlight-card p,
+.about-spotlight-card h2 {
+  color: unset;
+}
+
 .about-story-text p,
 .about-principle-card p,
 .about-promise-card p,
@@ -201,6 +206,10 @@
   line-height: 2;
   white-space: pre-line;
   color: var(--web-text);
+}
+
+.about-spotlight-card p {
+  color: unset;
 }
 
 .about-story,
@@ -272,11 +281,11 @@
 }
 
 .about-aside-card.accent-sand {
-  background: linear-gradient(180deg, rgba(244, 228, 204, 0.86), rgba(255, 255, 255, 0.82));
+  background: var(--web-surface);
 }
 
 .about-aside-card.accent-sea {
-  background: linear-gradient(180deg, rgba(208, 239, 236, 0.88), rgba(255, 255, 255, 0.82));
+  background: var(--web-surface);
 }
 
 .about-principles-grid {
@@ -290,8 +299,8 @@
   overflow: hidden;
   padding: 20px;
   border-radius: 24px;
-  background: var(--about-surface);
-  border: 1px solid var(--about-border);
+  background: var(--web-surface);
+  border: 1px solid var(--web-border);
 }
 
 .about-principle-card::before {
@@ -305,7 +314,7 @@
 
 .about-principle-index {
   margin-bottom: 16px;
-  color: rgba(20, 50, 74, 0.24);
+  color: var(--web-text);
   font-size: 28px;
   font-weight: 900;
 }
@@ -338,7 +347,7 @@
   align-items: start;
   padding: 18px;
   border-radius: 22px;
-  background: var(--about-surface);
+  background: var(--web-surface);
   border: 1px solid var(--about-border);
 }
 
@@ -353,7 +362,7 @@
   place-items: center;
   border-radius: 16px;
   background: linear-gradient(135deg, rgba(201, 107, 50, 0.16), rgba(13, 139, 143, 0.16));
-  color: var(--about-navy);
+  color: var(--web-text);
   font-weight: 900;
 }
 
@@ -365,6 +374,54 @@
   --about-shadow: 0 24px 60px rgba(2, 6, 23, 0.28);
   --about-panel-bg: linear-gradient(180deg, rgba(15, 23, 42, 0.9), rgba(17, 24, 39, 0.96));
   --about-state-bg: linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(17, 24, 39, 0.98));
+  --about-ink: #e6edf5;
+  --about-muted: #9caec0;
+  --about-surface: rgba(15, 23, 42, 0.86);
+  --about-border: rgba(148, 163, 184, 0.16);
+  --about-shadow: 0 24px 60px rgba(0, 0, 0, 0.24);
+  --about-panel-bg: linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(17, 24, 39, 0.96));
+  --about-state-bg: linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(17, 24, 39, 0.98));
+}
+:global([data-theme='dark']) .about-story,
+:global([data-theme='dark']) .about-principles,
+:global([data-theme='dark']) .about-contact,
+:global([data-theme='dark']) .about-promise-card,
+:global([data-theme='dark']) .about-principle-card,
+:global([data-theme='dark']) .about-contact-card,
+:global([data-theme='dark']) .about-hero-panel {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.86), rgba(17, 24, 39, 0.94));
+  border-color: rgba(148, 163, 184, 0.16);
+  box-shadow: 0 24px 56px rgba(0, 0, 0, 0.22);
+}
+:global([data-theme='dark']) .about-spotlight-card,
+:global([data-theme='dark']) .about-aside-card,
+:global([data-theme='dark']) .about-tag,
+:global([data-theme='dark']) .about-section-head span {
+  background: rgba(15, 23, 42, 0.72);
+  border-color: rgba(148, 163, 184, 0.18);
+}
+:global([data-theme='dark']) .about-aside-card.accent-sand {
+  background: linear-gradient(180deg, rgba(71, 47, 26, 0.7), rgba(15, 23, 42, 0.9));
+}
+:global([data-theme='dark']) .about-aside-card.accent-sea {
+  background: linear-gradient(180deg, rgba(15, 74, 82, 0.6), rgba(15, 23, 42, 0.9));
+}
+:global([data-theme='dark']) .about-spotlight-card p,
+:global([data-theme='dark']) .about-story-text p,
+:global([data-theme='dark']) .about-principle-card p,
+:global([data-theme='dark']) .about-promise-card p,
+:global([data-theme='dark']) .about-contact-card p,
+:global([data-theme='dark']) .about-aside-card strong,
+:global([data-theme='dark']) .about-section-head,
+:global([data-theme='dark']) .about-section-head span,
+:global([data-theme='dark']) .about-contact-badge {
+  color: var(--about-ink);
+}
+:global([data-theme='dark']) .about-principle-index {
+  color: rgba(226, 232, 240, 0.18);
+}
+:global([data-theme='dark']) .about-contact-badge {
+  background: linear-gradient(135deg, rgba(201, 107, 50, 0.22), rgba(13, 139, 143, 0.2));
 }
 
 :global(html[data-theme='dark']) .about-page {

@@ -854,30 +854,66 @@ onUnmounted(stopUnreadPoll);
             </div>
           </div>
 
-          <div class="meta-grid validation-grid">
-            <div><span>روش اعتبارسنجی</span><strong>{{ selectedItem.customerValidationData.selfValidationLabel || '-' }}</strong></div>
-            <div><span>وضعیت</span><strong>{{ selectedItem.customerValidationData.statusLabel || '-' }}</strong></div>
-            <div><span>نام سرویس</span><strong>{{ selectedItem.customerValidationData.validation?.title || '-' }}</strong></div>
-            <div><span>مبلغ پرداختی</span><strong>{{ formatMoney(selectedItem.customerValidationData.paidAmount) }}</strong></div>
-            <div><span>انقضا</span><strong>{{ selectedItem.customerValidationData.expiresAtLabel || '-' }}</strong></div>
-            <div>
-              <span>فایل خوداظهاری</span>
-              <strong>
-                <a v-if="selectedItem.customerValidationData.selfValidationFileUrl" class="validation-file-link" :href="selectedItem.customerValidationData.selfValidationFileDownloadUrl || selectedItem.customerValidationData.selfValidationFileUrl" download rel="noreferrer">
-                  {{ selectedItem.customerValidationData.selfValidationFileName || 'مشاهده فایل' }}
-                </a>
-                <template v-else>-</template>
-              </strong>
-            </div>
-            <div>
-              <span>گزارش نهایی اعتبارسنجی</span>
-              <strong>
-                <a v-if="selectedItem.customerValidationData.adminAttachmentUrl" class="validation-file-link" :href="selectedItem.customerValidationData.adminAttachmentDownloadUrl || selectedItem.customerValidationData.adminAttachmentUrl" download rel="noreferrer">
-                  {{ selectedItem.customerValidationData.adminAttachmentFileName || 'دانلود گزارش نهایی' }}
-                </a>
-                <template v-else>-</template>
-              </strong>
-            </div>
+          <div class="validation-snapshot-grid">
+            <article class="validation-snapshot-card">
+              <span class="validation-snapshot-icon tone-info"><i class="fa-solid fa-shield-heart"></i></span>
+              <div>
+                <span>روش اعتبارسنجی</span>
+                <strong>{{ selectedItem.customerValidationData.selfValidationLabel || '-' }}</strong>
+              </div>
+            </article>
+            <article class="validation-snapshot-card">
+              <span class="validation-snapshot-icon tone-success"><i class="fa-solid fa-badge-check"></i></span>
+              <div>
+                <span>وضعیت</span>
+                <strong>{{ selectedItem.customerValidationData.statusLabel || '-' }}</strong>
+              </div>
+            </article>
+            <article class="validation-snapshot-card">
+              <span class="validation-snapshot-icon tone-accent"><i class="fa-solid fa-layer-group"></i></span>
+              <div>
+                <span>نام سرویس</span>
+                <strong>{{ selectedItem.customerValidationData.validation?.title || '-' }}</strong>
+              </div>
+            </article>
+            <article class="validation-snapshot-card">
+              <span class="validation-snapshot-icon tone-warning"><i class="fa-solid fa-wallet"></i></span>
+              <div>
+                <span>مبلغ پرداختی</span>
+                <strong>{{ formatMoney(selectedItem.customerValidationData.paidAmount) }}</strong>
+              </div>
+            </article>
+            <article class="validation-snapshot-card">
+              <span class="validation-snapshot-icon tone-neutral"><i class="fa-solid fa-calendar-clock"></i></span>
+              <div>
+                <span>انقضا</span>
+                <strong>{{ selectedItem.customerValidationData.expiresAtLabel || '-' }}</strong>
+              </div>
+            </article>
+            <article class="validation-snapshot-card wide">
+              <span class="validation-snapshot-icon tone-accent"><i class="fa-solid fa-file-circle-check"></i></span>
+              <div>
+                <span>فایل خوداظهاری</span>
+                <strong>
+                  <a v-if="selectedItem.customerValidationData.selfValidationFileUrl" class="validation-file-link" :href="selectedItem.customerValidationData.selfValidationFileDownloadUrl || selectedItem.customerValidationData.selfValidationFileUrl" download rel="noreferrer">
+                    {{ selectedItem.customerValidationData.selfValidationFileName || 'مشاهده فایل' }}
+                  </a>
+                  <template v-else>-</template>
+                </strong>
+              </div>
+            </article>
+            <article class="validation-snapshot-card wide">
+              <span class="validation-snapshot-icon tone-info"><i class="fa-solid fa-file-shield"></i></span>
+              <div>
+                <span>گزارش نهایی اعتبارسنجی</span>
+                <strong>
+                  <a v-if="selectedItem.customerValidationData.adminAttachmentUrl" class="validation-file-link" :href="selectedItem.customerValidationData.adminAttachmentDownloadUrl || selectedItem.customerValidationData.adminAttachmentUrl" download rel="noreferrer">
+                    {{ selectedItem.customerValidationData.adminAttachmentFileName || 'دانلود گزارش نهایی' }}
+                  </a>
+                  <template v-else>-</template>
+                </strong>
+              </div>
+            </article>
           </div>
 
           <div v-if="selectedItem.customerValidationData.result" class="validation-result-box">
@@ -891,13 +927,19 @@ onUnmounted(stopUnreadPoll);
                   <strong>{{ stage.title }}</strong>
                   <p v-if="stage.description">{{ stage.description }}</p>
                 </div>
+                <span class="validation-stage-badge">{{ formatNumber(stage.items?.length || 0) }} مورد</span>
               </div>
 
               <div v-if="stage.items?.length" class="validation-stage-items">
                 <div v-for="entry in stage.items" :key="entry.id || `${stage.id}-${entry.title}`" class="validation-stage-item">
-                  <div>
-                    <span>{{ entry.title }}</span>
-                    <small>{{ entry.typeLabel || entry.categoryLabel || 'داده ثبت‌شده' }}</small>
+                  <div class="validation-stage-copy">
+                    <span class="validation-stage-item-icon">
+                      <i :class="entry.type === 'file' ? 'fa-solid fa-paperclip' : entry.type === 'date' ? 'fa-solid fa-calendar-days' : entry.type === 'number' ? 'fa-solid fa-hashtag' : 'fa-solid fa-lines-leaning'"></i>
+                    </span>
+                    <div>
+                      <span>{{ entry.title }}</span>
+                      <small>{{ entry.typeLabel || entry.categoryLabel || 'داده ثبت‌شده' }}</small>
+                    </div>
                   </div>
                   <div class="validation-stage-value">
                     <a v-if="entry.type === 'file' && entry.value?.url" class="btn btn-sm btn-outline-secondary" :href="entry.value.downloadUrl || entry.value.url" download rel="noreferrer">
@@ -920,9 +962,14 @@ onUnmounted(stopUnreadPoll);
           </div>
           <div v-if="selectedItem.documents?.length" class="document-list">
             <div v-for="document in selectedItem.documents" :key="document.id" class="document-item">
-              <div>
-                <strong>{{ document.title }}</strong>
-                <p>{{ document.help || document.subject || 'بدون توضیح' }}</p>
+              <div class="document-item-copy">
+                <span class="document-kind-icon">
+                  <i :class="document.type === 'file' ? 'fa-solid fa-paperclip' : document.type === 'date' ? 'fa-solid fa-calendar-days' : document.type === 'number' ? 'fa-solid fa-hashtag' : 'fa-solid fa-align-right'"></i>
+                </span>
+                <div>
+                  <strong>{{ document.title }}</strong>
+                  <p>{{ document.help || document.subject || 'بدون توضیح' }}</p>
+                </div>
               </div>
               <div class="document-value">
                 <template v-if="document.type === 'file' && document.value?.url">

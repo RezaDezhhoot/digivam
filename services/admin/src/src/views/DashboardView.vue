@@ -265,7 +265,7 @@ onMounted(() => {
         </div>
         <div v-if="dealsLoading" class="text-center text-muted py-4">در حال بارگذاری...</div>
         <div v-else-if="!dealsChartItems.length" class="text-center text-muted py-4">داده‌ای برای نمایش وجود ندارد</div>
-        <LineChart v-else :items="dealsChartItems" />
+        <LineChart v-else :items="dealsChartItems" value-label="مبلغ" value-suffix=" تومان" />
       </div>
 
       <div class="cv-summary-card mt-4">

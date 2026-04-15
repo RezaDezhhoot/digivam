@@ -31,6 +31,29 @@
   const getDealActionLabel = (deal) => (deal.canSubmitDocuments ? 'ادامه تکمیل' : 'مشاهده جزئیات');
   const getToneClass = (deal) => `deal-status-chip-${deal.status}`;
   const getAdminReviewReason = (deal) => deal.adminReviewData?.reason || 'این پرونده توسط مدیریت در حال بررسی است.';
+  const getDealVisual = (deal) => {
+    const status = String(deal?.status || '').toLowerCase();
+    const step = String(deal?.step || '').toLowerCase();
+
+    if (status === 'done') return { icon: 'fa-solid fa-circle-check', tone: 'success' };
+    if (status === 'failed') return { icon: 'fa-solid fa-circle-xmark', tone: 'danger' };
+    if (status === 'suspended') return { icon: 'fa-solid fa-pause-circle', tone: 'muted' };
+
+    switch (step) {
+      case 'documents':
+        return { icon: 'fa-solid fa-folder-open', tone: 'warning' };
+      case 'contract':
+        return { icon: 'fa-solid fa-file-signature', tone: 'accent' };
+      case 'payment':
+        return { icon: 'fa-solid fa-money-check-dollar', tone: 'info' };
+      case 'transfer':
+        return { icon: 'fa-solid fa-arrow-right-arrow-left', tone: 'accent' };
+      case 'verify_customer':
+        return { icon: 'fa-solid fa-user-check', tone: 'info' };
+      default:
+        return { icon: 'fa-solid fa-briefcase', tone: 'neutral' };
+    }
+  };
 
   const shellStats = computed(() => [
     { label: 'کل معامله‌ها', value: formatNumber(summary.value.total) },
@@ -47,19 +70,22 @@
       title: 'پرونده‌های نیازمند اقدام',
       value: formatNumber(summary.value.waitingCustomer),
       description: 'معامله‌هایی که هنوز باید مدارک یا داده‌هایشان را کامل کنید.',
-      tone: 'warning'
+      tone: 'warning',
+      icon: 'fa-solid fa-bell-concierge'
     },
     {
       title: 'ارسال‌شده برای کارگزار',
       value: formatNumber(summary.value.verifyBroker || summary.value.waitingBroker),
       description: 'پرونده‌هایی که از سمت شما تکمیل شده‌اند و در صف بررسی کارگزار هستند.',
-      tone: 'accent'
+      tone: 'accent',
+      icon: 'fa-solid fa-user-tie'
     },
     {
       title: 'جمع مبلغ معامله‌ها',
       value: `${formatNumber(items.value.reduce((total, deal) => total + Number(deal.amount || 0), 0))} تومان`,
       description: 'مجموع مبالغ ثبت‌شده در کارتابل فعلی شما.',
-      tone: 'info'
+      tone: 'info',
+      icon: 'fa-solid fa-wallet'
     }
   ]);
 
@@ -107,10 +133,15 @@
             <article class="deals-spotlight-card" :class="{ 'act-by-marked': spotlightDeal && isCustomerTurn(spotlightDeal) }">
               <template v-if="spotlightDeal">
                 <div class="deals-spotlight-top">
-                  <div>
-                    <span class="deals-kicker">{{ spotlightDeal.dealCode || '' }}</span>
-                    <h2>{{ getDealTitle(spotlightDeal) }}</h2>
-                    <p>{{ spotlightDeal.stepLabel }}</p>
+                  <div class="deals-spotlight-hero">
+                    <div class="deal-visual-badge" :class="`tone-${getDealVisual(spotlightDeal).tone}`">
+                      <i :class="getDealVisual(spotlightDeal).icon"></i>
+                    </div>
+                    <div>
+                      <span class="deals-kicker">{{ spotlightDeal.dealCode || '' }}</span>
+                      <h2>{{ getDealTitle(spotlightDeal) }}</h2>
+                      <p>{{ spotlightDeal.stepLabel }}</p>
+                    </div>
                     <p v-if="spotlightDeal.adminReviewMode" class="deal-admin-review-inline">در بررسی مدیریت: {{ getAdminReviewReason(spotlightDeal) }}</p>
                   </div>
                   <span class="deal-status-chip" :class="getToneClass(spotlightDeal)">{{ spotlightDeal.statusLabel }}</span>
@@ -147,68 +178,13 @@
 
             <div class="deals-insights-grid">
               <article v-for="card in insightCards" :key="card.title" class="deals-insight-card" :class="`tone-${card.tone}`">
+                <div class="deals-insight-icon"><i :class="card.icon"></i></div>
                 <span>{{ card.title }}</span>
                 <strong>{{ card.value }}</strong>
                 <p>{{ card.description }}</p>
               </article>
             </div>
           </section>
-
-          <section class="deals-lanes-grid">
-            <article class="deals-lane-card">
-              <div class="customer-panel-head compact">
-                <div>
-                  <h2>در جریان</h2>
-                  <p>تمام پرونده‌های فعال که هنوز در چرخه معامله هستند.</p>
-                </div>
-                <strong>{{ formatNumber(activeDeals.length) }}</strong>
-              </div>
-
-              <div v-if="activeDeals.length" class="deals-stack">
-                <article v-for="deal in activeDeals" :key="deal.id" class="deal-line-card" :class="{ 'act-by-marked': isCustomerTurn(deal) }">
-                  <div>
-                    <h3>{{ deal.dealCode }} - {{ getDealTitle(deal) }}</h3>
-                    <p>{{ deal.stepLabel }}</p>
-                    <p v-if="deal.adminReviewMode" class="deal-admin-review-inline">در بررسی مدیریت: {{ getAdminReviewReason(deal) }}</p>
-                  </div>
-                  <div class="deal-line-meta">
-                    <span>{{ formatNumber(deal.amount) }} تومان</span>
-                    <span>{{ getDocsProgress(deal) }} مدرک</span>
-                    <span v-if="isCustomerTurn(deal)" class="act-by-mark-chip">نوبت اقدام شما</span>
-                    <RouterLink class="customer-inline-link" :to="getDealRoute(deal)">{{ getDealActionLabel(deal) }}</RouterLink>
-                  </div>
-                </article>
-              </div>
-              <div v-else class="customer-empty">معامله فعالی در جریان ندارید.</div>
-            </article>
-
-            <article class="deals-lane-card muted">
-              <div class="customer-panel-head compact">
-                <div>
-                  <h2>آرشیو و نتیجه‌ها</h2>
-                  <p>پرونده‌های نهایی‌شده، ناموفق یا تعلیق‌شده.</p>
-                </div>
-                <strong>{{ formatNumber(archivedDeals.length) }}</strong>
-              </div>
-
-              <div v-if="archivedDeals.length" class="deals-stack">
-                <article v-for="deal in archivedDeals" :key="deal.id" class="deal-line-card archive" :class="{ 'act-by-marked': isCustomerTurn(deal) }">
-                  <div>
-                    <h3>{{ deal.dealCode }} - {{ getDealTitle(deal) }}</h3>
-                    <p>{{ deal.statusLabel }} | {{ deal.updatedAtLabel }}</p>
-                    <p v-if="deal.adminReviewMode" class="deal-admin-review-inline">در بررسی مدیریت: {{ getAdminReviewReason(deal) }}</p>
-                  </div>
-                  <div class="deal-line-meta">
-                    <span>{{ formatNumber(deal.amount) }} تومان</span>
-                    <span v-if="isCustomerTurn(deal)" class="act-by-mark-chip">نوبت اقدام شما</span>
-                    <RouterLink class="customer-inline-link" :to="getDealRoute(deal)">مشاهده</RouterLink>
-                  </div>
-                </article>
-              </div>
-              <div v-else class="customer-empty">هنوز نتیجه‌ای در آرشیو ثبت نشده است.</div>
-            </article>
-          </section>
-
           <section class="deals-list-card">
             <div class="customer-panel-head">
               <div>
@@ -221,18 +197,23 @@
             <div v-if="items.length" class="deals-grid">
               <article v-for="deal in items" :key="deal.id" class="deal-card" :class="{ 'act-by-marked': isCustomerTurn(deal) }">
                 <div class="deal-card-top">
-                  <div>
-                    <h3>{{ deal.dealCode }} - {{ getDealTitle(deal) }}</h3>
-                    <p>{{ deal.typeLabel || deal.facility?.typeLabel || '-' }} | {{ deal.stepLabel }}</p>
+                  <div class="deal-card-top-main">
+                    <div class="deal-visual-badge small" :class="`tone-${getDealVisual(deal).tone}`">
+                      <i :class="getDealVisual(deal).icon"></i>
+                    </div>
+                    <div>
+                      <h3>{{ deal.dealCode }} - {{ getDealTitle(deal) }}</h3>
+                      <p>{{ deal.typeLabel || deal.facility?.typeLabel || '-' }} | {{ deal.stepLabel }}</p>
+                    </div>
                     <p v-if="deal.adminReviewMode" class="deal-admin-review-inline">در بررسی مدیریت: {{ getAdminReviewReason(deal) }}</p>
                   </div>
                   <span class="deal-status-chip" :class="getToneClass(deal)">{{ deal.statusLabel }}</span>
                 </div>
 
                 <div class="deal-card-meta">
-                  <span>مبلغ: {{ formatNumber(deal.amount) }} تومان</span>
-                  <span>اقدام با: {{ getActionBy(deal) }}</span>
-                  <span>مدارک: {{ getDocsProgress(deal) }}</span>
+                  <span class="deal-meta-chip"><i class="fa-solid fa-wallet"></i>مبلغ: {{ formatNumber(deal.amount) }} تومان</span>
+                  <span class="deal-meta-chip"><i class="fa-solid fa-user-clock"></i>اقدام با: {{ getActionBy(deal) }}</span>
+                  <span class="deal-meta-chip"><i class="fa-solid fa-folder-open"></i>مدارک: {{ getDocsProgress(deal) }}</span>
                   <span v-if="isCustomerTurn(deal)" class="act-by-mark-chip">نوبت اقدام شما</span>
                 </div>
 

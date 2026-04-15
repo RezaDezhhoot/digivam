@@ -9,6 +9,7 @@ import {
   updateBrokerFacility
 } from '../services/broker-facility.api.js';
 import { useAppToast } from '../composables/useToast.js';
+import { extractRawAmountInput, formatAmountInWords, formatAmountInputDisplay } from '../../../../web/src/src/utils/amount.js';
 
 const toast = useAppToast();
 
@@ -450,18 +451,18 @@ onMounted(async () => {
           <div class="col-12 col-md-6 col-lg-4">
             <label class="form-label form-label-required">حداقل مبلغ</label>
             <div class="input-group amount-group">
-              <input v-model="form.minAmount" type="number" :min="amountLimits.min" :max="amountLimits.max" class="form-control" placeholder="1000000" />
+              <input :value="formatAmountInputDisplay(form.minAmount)" type="text" class="form-control" inputmode="numeric" dir="ltr" placeholder="1000000" @input="form.minAmount = extractRawAmountInput($event.target.value)" />
               <span class="input-group-text">تومان</span>
             </div>
-            <small v-if="Number(form.minAmount)" class="text-muted d-block mt-1">{{ formatMoney(form.minAmount) }}</small>
+            <small v-if="Number(form.minAmount)" class="text-muted d-block mt-1">{{ formatAmountInWords(form.minAmount) }}</small>
           </div>
           <div class="col-12 col-md-6 col-lg-4">
             <label class="form-label form-label-required">حداکثر مبلغ</label>
             <div class="input-group amount-group">
-              <input v-model="form.maxAmount" type="number" :min="amountLimits.min" :max="amountLimits.max" class="form-control" placeholder="50000000" />
+              <input :value="formatAmountInputDisplay(form.maxAmount)" type="text" class="form-control" inputmode="numeric" dir="ltr" placeholder="50000000" @input="form.maxAmount = extractRawAmountInput($event.target.value)" />
               <span class="input-group-text">تومان</span>
             </div>
-            <small v-if="Number(form.maxAmount)" class="text-muted d-block mt-1">{{ formatMoney(form.maxAmount) }}</small>
+            <small v-if="Number(form.maxAmount)" class="text-muted d-block mt-1">{{ formatAmountInWords(form.maxAmount) }}</small>
           </div>
           <div class="col-12 col-md-6 col-lg-4">
             <label class="form-label form-label-required">مهلت برداشت</label>

@@ -321,6 +321,22 @@
   border: 1px solid var(--web-border);
 }
 
+.check-form-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(15, 118, 110, 0.06);
+  color: #0f766e;
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.check-form-note i {
+  margin-top: 2px;
+}
+
 .check-form-row {
   display: flex;
   flex-direction: column;
@@ -359,6 +375,12 @@
 
 .check-form-input:focus {
   border-color: var(--web-primary);
+}
+
+.check-form-error {
+  font-size: 11px;
+  font-weight: 700;
+  color: #b91c1c;
 }
 
 .check-form-checkbox-label {

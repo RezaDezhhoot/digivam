@@ -9,6 +9,7 @@ import {
   getCustomerValidations,
   updateCustomerValidation
 } from '../services/admin-api.js';
+import { extractRawAmountInput, formatAmountInWords, formatAmountInputDisplay, isAmountLikeField } from '../../../../web/src/src/utils/amount.js';
 
 const { confirm } = useConfirm();
 const toast = useAppToast();
@@ -71,6 +72,7 @@ const getItemFieldTypeLabel = (item) => {
 
 const isDocumentField = (item) => Boolean(item?.documentId);
 const isFileField = (item) => getItemFieldType(item) === 'file';
+const isAmountField = (item) => getItemFieldType(item) === 'number' && isAmountLikeField(item);
 
 const normalizeEditableData = (data) => {
   if (!data || typeof data !== 'object') {
@@ -463,12 +465,25 @@ onMounted(load);
                             <small class="cv-input-note">مقدار فیلدهای فایل فقط قابل مشاهده است و در پایگاه داده فقط شناسه فایل ذخیره می شود.</small>
                           </template>
 
-                          <input
-                            v-else-if="getItemFieldType(item) === 'number'"
-                            v-model="item.value"
-                            type="number"
-                            class="form-control"
-                          >
+                          <template v-else-if="getItemFieldType(item) === 'number'">
+                            <template v-if="isAmountField(item)">
+                              <input
+                                :value="formatAmountInputDisplay(item.value)"
+                                type="text"
+                                class="form-control"
+                                inputmode="numeric"
+                                dir="ltr"
+                                @input="item.value = extractRawAmountInput($event.target.value)"
+                              >
+                              <small v-if="Number(item.value)" class="text-muted d-block mt-1">{{ formatAmountInWords(item.value) }}</small>
+                            </template>
+                            <input
+                              v-else
+                              v-model="item.value"
+                              type="number"
+                              class="form-control"
+                            >
+                          </template>
 
                           <input
                             v-else-if="getItemFieldType(item) === 'date'"

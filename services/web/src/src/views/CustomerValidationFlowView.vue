@@ -12,6 +12,7 @@ import {
   startValidationPayment,
   verifyValidationPayment
 } from '../services/customer-panel.api.js';
+import { extractRawAmountInput, formatAmountInWords, formatAmountInputDisplay, isAmountLikeField } from '../utils/amount.js';
 
 const route = useRoute();
 const router = useRouter();
@@ -74,6 +75,8 @@ const getFieldIcon = (item) => {
   const map = { file: 'fa-solid fa-cloud-arrow-up', text: 'fa-solid fa-font', number: 'fa-solid fa-hashtag', date: 'fa-solid fa-calendar-days', image: 'fa-solid fa-image' };
   return map[item.fieldType] || 'fa-solid fa-circle-dot';
 };
+
+const isAmountField = (item) => item?.fieldType === 'number' && isAmountLikeField(item);
 
 const resetPaymentState = () => {
   paymentDone.value = false;
@@ -682,7 +685,22 @@ watch(() => route.params.validationId, load);
 
                   <!-- Number -->
                   <template v-else-if="item.fieldType === 'number'">
+                    <template v-if="isAmountField(item)">
+                      <input
+                        :value="formatAmountInputDisplay(formData[`field_${item.documentId}`])"
+                        type="text"
+                        class="vf-input"
+                        inputmode="numeric"
+                        dir="ltr"
+                        :placeholder="getFieldPlaceholder(item)"
+                        @input="formData[`field_${item.documentId}`] = extractRawAmountInput($event.target.value)"
+                      >
+                      <div v-if="Number(formData[`field_${item.documentId}`])" class="vf-input-footer">
+                        <span class="vf-char-count">{{ formatAmountInWords(formData[`field_${item.documentId}`]) }}</span>
+                      </div>
+                    </template>
                     <input
+                      v-else
                       v-model="formData[`field_${item.documentId}`]"
                       type="number"
                       class="vf-input"
