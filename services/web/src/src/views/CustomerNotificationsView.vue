@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import CustomerPanelShell from '../components/CustomerPanelShell.vue';
 import {
   getCustomerNotifications,
@@ -8,11 +9,13 @@ import {
 } from '../services/customer-notification.api.js';
 import { useCustomerSession } from '../composables/useCustomerSession.js';
 
+const router = useRouter();
 const { syncNotificationSummary } = useCustomerSession();
 
 const loading = ref(false);
 const bulkLoading = ref(false);
 const actionId = ref(null);
+const navigateId = ref(null);
 const page = ref(1);
 const pages = ref(0);
 const items = ref([]);
@@ -108,6 +111,26 @@ const markAllRead = async () => {
   }
 };
 
+const getNotificationDetailPath = (item) => String(item?.metadata?.detailPath || '').trim();
+
+const openNotificationTarget = async (item) => {
+  const detailPath = getNotificationDetailPath(item);
+  if (!detailPath) {
+    return;
+  }
+
+  navigateId.value = item.id;
+  try {
+    if (!item.isRead) {
+      await markCustomerNotificationRead(item.id).catch(() => null);
+    }
+    await load().catch(() => null);
+    await router.push(detailPath);
+  } finally {
+    navigateId.value = null;
+  }
+};
+
 onMounted(load);
 </script>
 
@@ -168,9 +191,19 @@ onMounted(load);
 
           <div class="customer-notify-card-foot">
             <span>فرستنده: {{ item.senderName }}</span>
-            <button v-if="!item.isRead" class="btn btn-sm btn-outline-secondary" :disabled="actionId === item.id" @click="markOneRead(item)">
-              {{ actionId === item.id ? '...' : 'خوانده شد' }}
-            </button>
+            <div class="customer-notify-card-actions">
+              <button
+                v-if="item.metadata?.detailPath"
+                class="btn btn-sm btn-primary"
+                :disabled="navigateId === item.id"
+                @click="openNotificationTarget(item)"
+              >
+                {{ navigateId === item.id ? '...' : 'مشاهده معامله' }}
+              </button>
+              <button v-if="!item.isRead" class="btn btn-sm btn-outline-secondary" :disabled="actionId === item.id || navigateId === item.id" @click="markOneRead(item)">
+                {{ actionId === item.id ? '...' : 'خوانده شد' }}
+              </button>
+            </div>
           </div>
         </article>
       </div>
@@ -185,193 +218,4 @@ onMounted(load);
   </section>
 </template>
 
-<style scoped>
-.customer-notifications-view {
-  display: grid;
-  gap: 18px;
-}
-
-.customer-notify-hero,
-.customer-notify-panel {
-  padding: 24px;
-  border-radius: 30px;
-}
-
-.customer-notify-hero {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.customer-notify-kicker {
-  display: inline-flex;
-  align-items: center;
-  min-height: 34px;
-  padding: 0 14px;
-  border-radius: 999px;
-  background: var(--web-primary-soft);
-  color: var(--web-primary);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.customer-notify-hero h1 {
-  margin: 12px 0 10px;
-  font-size: 32px;
-  font-weight: 900;
-}
-
-.customer-notify-hero p {
-  margin: 0;
-  color: var(--web-muted);
-}
-
-.customer-notify-mark-all {
-  min-height: 46px;
-  padding: 0 18px;
-  border: 1px solid var(--web-border);
-  border-radius: 16px;
-  background: var(--web-surface-soft);
-  color: var(--web-text);
-  font-weight: 800;
-}
-
-.customer-notify-summary {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.customer-notify-stat {
-  padding: 20px;
-  border-radius: 24px;
-  border: 1px solid var(--web-border);
-  background: linear-gradient(180deg, var(--web-surface) 0%, var(--web-surface-soft) 100%);
-  box-shadow: var(--web-shadow);
-}
-
-.customer-notify-stat span {
-  color: var(--web-muted);
-  font-size: 13px;
-}
-
-.customer-notify-stat strong {
-  display: block;
-  margin-top: 10px;
-  font-size: 26px;
-  font-weight: 900;
-}
-
-.tone-warning { background: linear-gradient(180deg, rgba(255, 235, 205, 0.6) 0%, var(--web-surface) 100%); }
-.tone-accent { background: linear-gradient(180deg, rgba(255, 106, 99, 0.08) 0%, var(--web-surface) 100%); }
-.tone-info { background: linear-gradient(180deg, rgba(93, 159, 255, 0.08) 0%, var(--web-surface) 100%); }
-.tone-danger { background: linear-gradient(180deg, rgba(220, 38, 38, 0.08) 0%, var(--web-surface) 100%); }
-
-.customer-notify-filters,
-.customer-notify-filter-actions,
-.customer-notify-card-head,
-.customer-notify-card-foot,
-.customer-notify-card-chips,
-.customer-notify-pagination {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.customer-notify-filters,
-.customer-notify-card-foot,
-.customer-notify-pagination {
-  justify-content: space-between;
-  align-items: center;
-}
-
-.customer-notify-list {
-  display: grid;
-  gap: 14px;
-  margin-top: 18px;
-}
-
-.customer-notify-card {
-  padding: 18px;
-  border-radius: 22px;
-  border: 1px solid var(--web-border);
-  background: var(--web-surface-soft);
-}
-
-.customer-notify-card.unread {
-  border-color: rgba(255, 106, 99, 0.32);
-  box-shadow: 0 12px 28px rgba(155, 0, 0, 0.08);
-}
-
-.customer-notify-card h2 {
-  margin: 14px 0 10px;
-  font-size: 20px;
-  font-weight: 900;
-}
-
-.customer-notify-card p,
-.customer-notify-card time,
-.customer-notify-card-foot span {
-  color: var(--web-muted);
-  line-height: 1.8;
-}
-
-.read-chip,
-.category-chip,
-.customer-page-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 34px;
-  padding: 0 12px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.read-chip.read {
-  background: rgba(22, 163, 74, 0.1);
-  color: #15803d;
-}
-
-.read-chip.unread {
-  background: rgba(249, 115, 22, 0.12);
-  color: #c2410c;
-}
-
-.customer-notify-empty {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 18px;
-  padding: 18px;
-  border-radius: 20px;
-  background: var(--web-surface-soft);
-  color: var(--web-muted);
-  font-weight: 700;
-}
-
-.customer-page-btn {
-  border: 1px solid var(--web-border);
-  background: var(--web-surface-soft);
-  color: var(--web-text);
-}
-
-@media (max-width: 991px) {
-  .customer-notify-summary {
-    grid-template-columns: 1fr 1fr;
-  }
-}
-
-@media (max-width: 767px) {
-  .customer-notify-summary {
-    grid-template-columns: 1fr;
-  }
-
-  .customer-notify-hero h1 {
-    font-size: 28px;
-  }
-}
-</style>
+<style scoped src="./styles/CustomerNotificationsView.css"></style>

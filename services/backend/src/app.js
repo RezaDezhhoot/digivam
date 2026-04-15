@@ -3,6 +3,7 @@ import path from 'node:path';
 import { apiRouter } from './src/routes/index.js';
 import { errorHandler } from './src/middlewares/error-handler.js';
 import { corsMiddleware } from './src/middlewares/cors.js';
+import { requestLogger } from './src/middlewares/request-logger.js';
 import { loadMaintenanceSettings } from './src/services/site-settings.service.js';
 
 const resolveMaintenancePanel = (req) => {
@@ -46,6 +47,7 @@ export const createApp = () => {
 
   app.use('/uploads', express.static(path.resolve(process.cwd(), 'src', 'uploads')));
   app.use(corsMiddleware)
+  app.use(requestLogger);
 
   app.get('/health', (_req, res) => {
     res.status(200).json({ status: 'سالم' });

@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue';
 import SimpleBarChart from '../components/SimpleBarChart.vue';
 import LineChart from '../components/LineChart.vue';
-import { getPageViews, getSummary } from '../services/admin-api.js';
+import { getPageViews, getSummary, getDealAnalytics } from '../services/admin-api.js';
 
 const loading = ref(false);
 const summary = ref({
@@ -67,7 +67,7 @@ const financeCards = [
     title: 'ارزش پرداخت موفق',
     countKey: 'paidInvoices',
     countLabel: 'invoice موفق',
-    icon: 'fa-solid fa-badge-dollar',
+    icon: 'fa-solid fa-dollar',
     tone: 'blue'
   },
   {
@@ -111,6 +111,10 @@ const visitDays = ref(10);
 const visitItems = ref([]);
 const visitLoading = ref(false);
 
+const dealsPeriod = ref('daily');
+const dealsChartItems = ref([]);
+const dealsLoading = ref(false);
+
 const loadVisits = async () => {
   visitLoading.value = true;
   try {
@@ -118,6 +122,15 @@ const loadVisits = async () => {
     visitItems.value = data.items || [];
   } catch (_) { /* ignore */ }
   finally { visitLoading.value = false; }
+};
+
+const loadDealAnalytics = async () => {
+  dealsLoading.value = true;
+  try {
+    const data = await getDealAnalytics(`?period=${dealsPeriod.value}`);
+    dealsChartItems.value = data.items || [];
+  } catch (_) { /* ignore */ }
+  finally { dealsLoading.value = false; }
 };
 
 const load = async () => {
@@ -134,6 +147,7 @@ const load = async () => {
 onMounted(() => {
   load();
   loadVisits();
+  loadDealAnalytics();
 });
 </script>
 
@@ -237,6 +251,26 @@ onMounted(() => {
       <div class="cv-summary-card mt-4">
         <div class="section-head">
           <div>
+            <h2 class="section-title">تجزیه و تحلیل مبالغ تأیید کارگزار</h2>
+            <p class="section-subtitle">رندوی مبالغ broker_confirmation_amount معاملات</p>
+          </div>
+          <div class="visit-range-controls">
+            <select v-model="dealsPeriod" class="form-select form-select-sm" @change="loadDealAnalytics">
+              <option value="daily">روزانه (۳۰ روز)</option>
+              <option value="weekly">هفتگی (۱۲ هفته)</option>
+              <option value="monthly">ماهانه (۱۲ ماه)</option>
+              <option value="yearly">سالانه (۵ سال)</option>
+            </select>
+          </div>
+        </div>
+        <div v-if="dealsLoading" class="text-center text-muted py-4">در حال بارگذاری...</div>
+        <div v-else-if="!dealsChartItems.length" class="text-center text-muted py-4">داده‌ای برای نمایش وجود ندارد</div>
+        <LineChart v-else :items="dealsChartItems" />
+      </div>
+
+      <div class="cv-summary-card mt-4">
+        <div class="section-head">
+          <div>
             <h2 class="section-title">آمار بازدید وب‌سایت</h2>
             <p class="section-subtitle">تعداد بازدید روزانه از سایت عمومی</p>
           </div>
@@ -295,359 +329,4 @@ onMounted(() => {
   </div>
 </template>
 
-<style scoped>
-.dashboard-welcome {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-.welcome-icon {
-  width: 52px;
-  height: 52px;
-  border-radius: 14px;
-  background: var(--admin-primary-light);
-  color: var(--admin-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 22px;
-  flex-shrink: 0;
-}
-
-.welcome-title {
-  font-size: 20px;
-  font-weight: 700;
-  margin: 0;
-}
-
-.welcome-subtitle {
-  font-size: 14px;
-  color: var(--admin-muted);
-  margin: 4px 0 0;
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 16px;
-}
-
-.stat-card,
-.facility-overview-card,
-.facility-chart-card {
-  background: var(--admin-surface);
-  border: 1px solid var(--admin-border);
-  border-radius: 14px;
-  box-shadow: var(--admin-shadow);
-}
-
-.stat-card {
-  padding: 20px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.stat-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--admin-shadow-lg);
-}
-
-.stat-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px;
-  flex-shrink: 0;
-}
-
-.stat-info {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.stat-label {
-  font-size: 13px;
-  color: var(--admin-muted);
-}
-
-.stat-value {
-  font-size: 24px;
-  font-weight: 700;
-  line-height: 1;
-}
-
-.finance-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.today-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.today-card {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 18px;
-  border-radius: 18px;
-  border: 1px solid var(--admin-border);
-  background: var(--admin-surface);
-  box-shadow: var(--admin-shadow);
-}
-
-.today-card-blue { background: #eef6ff; }
-.today-card-green { background: #edfdf5; }
-.today-card-rose { background: #fff1f2; }
-.today-card-amber { background: #fff7ed; }
-
-.today-card-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.75);
-  color: var(--admin-primary);
-  font-size: 18px;
-  flex-shrink: 0;
-}
-
-.today-card-label {
-  font-size: 12px;
-  color: var(--admin-muted);
-  margin: 0 0 4px;
-}
-
-.today-card-value {
-  font-size: 24px;
-  color: var(--admin-text);
-}
-
-.finance-card {
-  position: relative;
-  overflow: hidden;
-  border-radius: 20px;
-  padding: 24px;
-  color: #fff;
-  box-shadow: var(--admin-shadow-lg);
-}
-
-.finance-card-blue {
-  background: linear-gradient(135deg, #0b5f83 0%, #084764 100%);
-}
-
-.finance-card-green {
-  background: linear-gradient(135deg, #15803d 0%, #166534 100%);
-}
-
-.finance-card-pattern {
-  position: absolute;
-  inset: auto -30px -50px auto;
-  width: 180px;
-  height: 180px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
-  animation: financePulse 7s ease-in-out infinite;
-}
-
-.finance-card-head {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin-bottom: 18px;
-}
-
-.finance-card-icon {
-  width: 54px;
-  height: 54px;
-  border-radius: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 22px;
-  background: rgba(255, 255, 255, 0.14);
-}
-
-.finance-card-title {
-  font-size: 17px;
-  font-weight: 800;
-  margin: 0 0 4px;
-}
-
-.finance-card-subtitle {
-  font-size: 13px;
-  margin: 0;
-  color: rgba(255, 255, 255, 0.75);
-}
-
-.finance-card-value {
-  position: relative;
-  font-size: clamp(28px, 3vw, 38px);
-  font-weight: 900;
-  letter-spacing: -0.03em;
-}
-
-.facility-overview-card,
-.facility-chart-card {
-  padding: 22px;
-  height: 100%;
-}
-
-.section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 18px;
-}
-
-.section-title {
-  font-size: 16px;
-  font-weight: 800;
-  margin: 0 0 4px;
-}
-
-.section-subtitle {
-  font-size: 13px;
-  color: var(--admin-muted);
-  margin: 0;
-}
-
-.facility-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.facility-mini-card {
-  border-radius: 16px;
-  border: 1px solid var(--admin-border);
-  padding: 16px;
-  background: var(--admin-surface-soft);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.facility-mini-card span {
-  font-size: 12px;
-  color: var(--admin-muted);
-}
-
-.facility-mini-card strong {
-  font-size: 22px;
-  color: var(--admin-text);
-}
-
-.facility-mini-icon {
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  background: rgba(11, 95, 131, 0.1);
-  color: #0b5f83;
-}
-
-.facility-mini-card-warning { background: #fff7ed; }
-.facility-mini-card-success { background: #ecfdf5; }
-.facility-mini-card-danger { background: #fef2f2; }
-.facility-mini-card-info { background: #eff6ff; }
-.facility-mini-card-muted { background: #f8fafc; }
-
-@keyframes financePulse {
-  0%,
-  100% {
-    transform: scale(1) translateY(0);
-  }
-
-  50% {
-    transform: scale(1.08) translateY(-8px);
-  }
-}
-
-@media (max-width: 991px) {
-  .finance-grid,
-  .today-grid,
-  .facility-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-.cv-summary-card {
-  padding: 22px;
-  border-radius: 22px;
-  background: var(--admin-surface);
-  border: 1px solid var(--admin-border);
-  box-shadow: var(--admin-shadow);
-}
-
-.cv-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 14px;
-}
-
-.cv-summary-item {
-  padding: 16px;
-  border-radius: 16px;
-  background: var(--admin-surface-soft, rgba(0,0,0,0.02));
-  border: 1px solid var(--admin-border);
-  text-align: center;
-}
-
-.cv-summary-item span {
-  display: block;
-  font-size: 12px;
-  color: var(--admin-muted);
-  font-weight: 700;
-}
-
-.cv-summary-item strong {
-  display: block;
-  margin-top: 8px;
-  font-size: 26px;
-  font-weight: 900;
-}
-
-.cv-summary-pending strong { color: #d97706; }
-.cv-summary-info strong { color: #1d4ed8; }
-.cv-summary-accent strong { color: #4f46e5; }
-.cv-summary-approved strong { color: #22a06b; }
-.cv-summary-rejected strong { color: #b42318; }
-
-.cv-summary-grid-5 {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-}
-
-@media (max-width: 768px) {
-  .cv-summary-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .cv-summary-grid-5 {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-.visit-range-controls {
-  min-width: 140px;
-}
-</style>
+<style scoped src="./styles/DashboardView.css"></style>

@@ -6,7 +6,7 @@ import { requireAuth } from '../middlewares/auth.js';
 
 export const customerPanelRouter = Router();
 
-customerPanelRouter.use(requireAuth('customer'));
+customerPanelRouter.use(requireAuth('customer', { allowSuspended: true }));
 
 customerPanelRouter.get('/dashboard', getCustomerDashboard);
 

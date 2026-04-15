@@ -1,5 +1,6 @@
 <script setup>
 import { onMounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import AppPagination from '../components/AppPagination.vue';
 import {
   getBrokerNotifications,
@@ -9,10 +10,12 @@ import {
 import { useAppToast } from '../composables/useToast.js';
 
 const toast = useAppToast();
+const router = useRouter();
 
 const loading = ref(false);
 const bulkLoading = ref(false);
 const actionId = ref(null);
+const navigateId = ref(null);
 const page = ref(1);
 const limit = ref(10);
 const total = ref(0);
@@ -114,6 +117,29 @@ const markAllRead = async () => {
   }
 };
 
+const getNotificationDetailPath = (item) => String(item?.metadata?.detailPath || '').trim();
+
+const openNotificationTarget = async (item) => {
+  const detailPath = getNotificationDetailPath(item);
+  if (!detailPath) {
+    return;
+  }
+
+  navigateId.value = item.id;
+  try {
+    if (!item.isRead) {
+      await markBrokerNotificationRead(item.id).catch(() => null);
+      dispatchNotificationUpdate();
+    }
+    await load().catch(() => null);
+    await router.push(detailPath);
+  } catch (error) {
+    toast.error(error.message);
+  } finally {
+    navigateId.value = null;
+  }
+};
+
 onMounted(load);
 </script>
 
@@ -199,11 +225,23 @@ onMounted(load);
               <span>فرستنده: {{ item.senderName }}</span>
               <span>گیرنده: {{ item.recipientName }}</span>
             </div>
-            <button v-if="!item.isRead" class="btn btn-sm btn-outline-secondary" :disabled="actionId === item.id" @click="markOneRead(item)">
-              <i v-if="actionId === item.id" class="fa-solid fa-spinner fa-spin me-1"></i>
-              <i v-else class="fa-solid fa-check me-1"></i>
-              خوانده شد
-            </button>
+            <div class="notification-actions">
+              <button
+                v-if="item.metadata?.detailPath"
+                class="btn btn-sm btn-primary"
+                :disabled="navigateId === item.id"
+                @click="openNotificationTarget(item)"
+              >
+                <i v-if="navigateId === item.id" class="fa-solid fa-spinner fa-spin me-1"></i>
+                <i v-else class="fa-solid fa-arrow-up-right-from-square me-1"></i>
+                مشاهده معامله
+              </button>
+              <button v-if="!item.isRead" class="btn btn-sm btn-outline-secondary" :disabled="actionId === item.id || navigateId === item.id" @click="markOneRead(item)">
+                <i v-if="actionId === item.id" class="fa-solid fa-spinner fa-spin me-1"></i>
+                <i v-else class="fa-solid fa-check me-1"></i>
+                خوانده شد
+              </button>
+            </div>
           </div>
         </article>
       </div>
@@ -213,212 +251,4 @@ onMounted(load);
   </section>
 </template>
 
-<style scoped>
-.page-header {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  background: var(--surface-color);
-  border: 1px solid var(--panel-border);
-  border-radius: 14px;
-  padding: 18px 20px;
-  box-shadow: var(--panel-shadow);
-  flex-wrap: wrap;
-}
-
-.page-header-icon {
-  width: 46px;
-  height: 46px;
-  border-radius: 12px;
-  background: var(--chip-bg);
-  color: var(--brand-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-}
-
-.page-header-copy {
-  flex: 1;
-  min-width: 220px;
-}
-
-.page-header-title {
-  font-size: 18px;
-  font-weight: 800;
-  margin: 0;
-}
-
-.page-header-desc {
-  font-size: 13px;
-  color: var(--muted-text);
-  margin: 2px 0 0;
-}
-
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 16px;
-}
-
-.summary-card,
-.content-card,
-.empty-card {
-  background: var(--surface-color);
-  border: 1px solid var(--panel-border);
-  border-radius: 14px;
-  padding: 20px;
-  box-shadow: var(--panel-shadow);
-}
-
-.summary-card {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.summary-card span {
-  font-size: 12px;
-  color: var(--muted-text);
-}
-
-.summary-card strong {
-  font-size: 26px;
-}
-
-.warning-card { background: linear-gradient(160deg, rgba(245, 158, 11, 0.12), rgba(245, 158, 11, 0.03)); }
-.attention-card { background: linear-gradient(160deg, rgba(249, 115, 22, 0.12), rgba(249, 115, 22, 0.03)); }
-.danger-card { background: linear-gradient(160deg, rgba(220, 38, 38, 0.12), rgba(220, 38, 38, 0.03)); }
-.neutral-card { background: linear-gradient(160deg, rgba(107, 114, 128, 0.12), rgba(107, 114, 128, 0.03)); }
-
-.filter-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1.6fr) repeat(2, minmax(0, 180px)) auto;
-  gap: 12px;
-  align-items: center;
-}
-
-.search-box {
-  position: relative;
-}
-
-.search-icon {
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--muted-text);
-  font-size: 13px;
-}
-
-.search-input {
-  padding-right: 36px;
-}
-
-.notification-list {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.notification-card {
-  border: 1px solid var(--panel-border);
-  border-radius: 16px;
-  padding: 18px;
-  background: var(--surface-soft);
-}
-
-.notification-card.unread {
-  border-color: rgba(219, 0, 0, 0.25);
-  box-shadow: 0 12px 28px rgba(219, 0, 0, 0.06);
-}
-
-.notification-card-head,
-.notification-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.notification-card-chips,
-.notification-meta {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.category-chip,
-.status-chip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 12px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.status-read {
-  background: #f3f4f6;
-  color: #6b7280;
-}
-
-.status-unread {
-  background: #fff1f2;
-  color: #be123c;
-}
-
-.notification-time,
-.notification-meta {
-  font-size: 12px;
-  color: var(--muted-text);
-}
-
-.notification-title {
-  font-size: 16px;
-  font-weight: 800;
-  margin: 14px 0 8px;
-}
-
-.notification-body {
-  font-size: 14px;
-  line-height: 1.9;
-  color: var(--brand-text);
-  margin: 0 0 14px;
-}
-
-.empty-card {
-  text-align: center;
-}
-
-.empty-icon {
-  font-size: 46px;
-  color: var(--muted-text);
-  opacity: 0.3;
-  margin-bottom: 16px;
-}
-
-.compact-empty {
-  padding: 32px 18px;
-}
-
-@media (max-width: 1199px) {
-  .summary-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .filter-row {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 767px) {
-  .summary-grid {
-    grid-template-columns: 1fr;
-  }
-}
-</style>
+<style scoped src="./styles/BrokerNotificationsView.css"></style>

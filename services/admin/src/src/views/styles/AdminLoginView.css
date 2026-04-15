@@ -1,0 +1,78 @@
+.login-page { min-height: 100vh; background: var(--admin-bg); display: flex; align-items: center; }
+
+.login-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  border-radius: 20px;
+  overflow: hidden;
+  border: 1px solid var(--admin-border);
+  box-shadow: var(--admin-shadow-lg);
+}
+
+.login-aside {
+  padding: 32px;
+  min-height: 520px;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(160deg, #0b5f83 0%, #064058 100%);
+  color: #fff;
+}
+
+.login-theme-btn {
+  align-self: flex-start;
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.08);
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.login-theme-btn:hover { color: #fff; background: rgba(255,255,255,0.16); }
+
+.aside-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  letter-spacing: 0.05em;
+  opacity: 0.8;
+}
+.aside-brand i { font-size: 18px; }
+.aside-title { font-size: 26px; font-weight: 700; margin: 0 0 10px; }
+.aside-desc { opacity: 0.65; margin: 0 0 24px; font-size: 14px; line-height: 1.7; }
+
+.aside-features { display: flex; flex-direction: column; gap: 10px; }
+.aside-feature {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; border-radius: 10px;
+  background: rgba(255,255,255,0.08); font-size: 14px;
+}
+
+.login-form-section {
+  background: var(--admin-surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+}
+
+.login-form-inner { width: 100%; max-width: 380px; }
+
+.login-form-head { text-align: center; margin-bottom: 28px; }
+.form-head-icon {
+  width: 56px; height: 56px; border-radius: 16px;
+  background: var(--admin-primary-light); color: var(--admin-primary);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 22px; margin-bottom: 14px;
+}
+.form-head-title { font-size: 20px; font-weight: 700; margin: 0 0 6px; }
+.form-head-desc { font-size: 13px; color: var(--admin-muted); margin: 0; }
+
+@media (max-width: 991px) {
+  .login-grid { grid-template-columns: 1fr; }
+  .login-aside { min-height: 240px; }
+}

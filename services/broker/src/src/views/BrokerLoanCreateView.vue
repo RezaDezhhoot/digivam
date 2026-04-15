@@ -15,6 +15,7 @@ const toast = useAppToast();
 const loading = ref(false);
 const optionLoading = ref(false);
 const saving = ref(false);
+const exportLoading = ref(false);
 const activeTab = ref('details');
 const page = ref(1);
 const limit = ref(10);
@@ -115,8 +116,8 @@ const activateTab = (tab) => {
   activeTab.value = tab;
 };
 
-const buildQuery = () => {
-  const params = new URLSearchParams({ page: String(page.value), limit: String(limit.value) });
+const buildQuery = ({ page: nextPage = page.value, limit: nextLimit = limit.value } = {}) => {
+  const params = new URLSearchParams({ page: String(nextPage), limit: String(nextLimit) });
 
   if (search.value.trim()) {
     params.set('search', search.value.trim());
@@ -127,6 +128,45 @@ const buildQuery = () => {
   }
 
   return `?${params.toString()}`;
+};
+
+const exportFacilitiesToExcel = async () => {
+  exportLoading.value = true;
+  try {
+    const data = await getBrokerFacilities(buildQuery({ page: 1, limit: Math.max(total.value || 0, 1000) }));
+    const exportItems = Array.isArray(data.items) ? data.items : [];
+    if (!exportItems.length) {
+      toast.warning('داده‌ای برای خروجی اکسل وجود ندارد');
+      return;
+    }
+
+    const XLSX = await import('xlsx');
+    const rows = exportItems.map((item, index) => ({
+      'ردیف': index + 1,
+      'شناسه': item.id,
+      'عنوان': item.title || '-',
+      'اسلاگ': item.slug || '-',
+      'نوع وام': item.loanTypeTitle || '-',
+      'نوع معامله': item.typeLabel || '-',
+      'حداقل مبلغ': Number(item.minAmount || 0),
+      'حداکثر مبلغ': Number(item.maxAmount || 0),
+      'بازدید': Number(item.views || 0),
+      'نشان‌شده': Number(item.bookmarkCount || 0),
+      'وضعیت': item.statusLabel || item.status || '-',
+      'نظر ادمین': item.resultReason || '-',
+      'آخرین بروزرسانی': formatDate(item.updatedAt)
+    }));
+
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Facilities');
+    XLSX.writeFile(workbook, `broker-facilities-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast.success('خروجی اکسل امتیازهای وام آماده شد');
+  } catch (error) {
+    toast.error(error.message || 'ساخت خروجی اکسل با خطا مواجه شد');
+  } finally {
+    exportLoading.value = false;
+  }
 };
 
 const loadOptions = async () => {
@@ -413,6 +453,7 @@ onMounted(async () => {
               <input v-model="form.minAmount" type="number" :min="amountLimits.min" :max="amountLimits.max" class="form-control" placeholder="1000000" />
               <span class="input-group-text">تومان</span>
             </div>
+            <small v-if="Number(form.minAmount)" class="text-muted d-block mt-1">{{ formatMoney(form.minAmount) }}</small>
           </div>
           <div class="col-12 col-md-6 col-lg-4">
             <label class="form-label form-label-required">حداکثر مبلغ</label>
@@ -420,6 +461,7 @@ onMounted(async () => {
               <input v-model="form.maxAmount" type="number" :min="amountLimits.min" :max="amountLimits.max" class="form-control" placeholder="50000000" />
               <span class="input-group-text">تومان</span>
             </div>
+            <small v-if="Number(form.maxAmount)" class="text-muted d-block mt-1">{{ formatMoney(form.maxAmount) }}</small>
           </div>
           <div class="col-12 col-md-6 col-lg-4">
             <label class="form-label form-label-required">مهلت برداشت</label>
@@ -623,6 +665,10 @@ onMounted(async () => {
           <button class="btn btn-outline-secondary" @click="clearFilters">
             <i class="fa-solid fa-rotate-left me-1"></i> پاکسازی
           </button>
+          <button class="btn btn-outline-secondary" :disabled="exportLoading || loading" @click="exportFacilitiesToExcel">
+            <i class="fa-solid" :class="exportLoading ? 'fa-spinner fa-spin' : 'fa-file-excel'" style="margin-left:4px"></i>
+            خروجی اکسل
+          </button>
         </div>
 
         <div v-if="loading" class="spinner-overlay"><i class="fa-solid fa-spinner fa-spin"></i> در حال بارگذاری...</div>
@@ -682,512 +728,4 @@ onMounted(async () => {
   </section>
 </template>
 
-<style scoped>
-.page-header {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  background: var(--surface-color);
-  border: 1px solid var(--panel-border);
-  border-radius: 14px;
-  padding: 18px 20px;
-  box-shadow: var(--panel-shadow);
-}
-
-.page-header-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  background: var(--chip-bg);
-  color: var(--brand-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  flex-shrink: 0;
-}
-
-.page-header-title {
-  font-size: 17px;
-  font-weight: 700;
-  margin: 0;
-}
-
-.page-header-desc {
-  font-size: 13px;
-  color: var(--muted-text);
-  margin: 2px 0 0;
-}
-
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 14px;
-}
-
-.content-card,
-.summary-card,
-.empty-card {
-  background: var(--surface-color);
-  border: 1px solid var(--panel-border);
-  border-radius: 14px;
-  padding: 22px;
-  box-shadow: var(--panel-shadow);
-  position: relative;
-}
-
-.summary-card {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-
-.summary-card-neutral { background: linear-gradient(160deg, rgba(219, 0, 0, 0.08), rgba(138, 0, 0, 0.02)); }
-.summary-card-warning { background: linear-gradient(160deg, rgba(245, 158, 11, 0.12), rgba(245, 158, 11, 0.03)); }
-.summary-card-success { background: linear-gradient(160deg, rgba(34, 197, 94, 0.12), rgba(34, 197, 94, 0.03)); }
-.summary-card-danger { background: linear-gradient(160deg, rgba(239, 68, 68, 0.12), rgba(239, 68, 68, 0.03)); }
-.summary-card-info { background: linear-gradient(160deg, rgba(59, 130, 246, 0.12), rgba(59, 130, 246, 0.03)); }
-.summary-card-muted { background: linear-gradient(160deg, rgba(107, 114, 128, 0.12), rgba(107, 114, 128, 0.03)); }
-.summary-card-views { background: linear-gradient(160deg, rgba(124, 58, 237, 0.12), rgba(124, 58, 237, 0.03)); }
-
-.summary-icon {
-  width: 58px;
-  height: 58px;
-  border-radius: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(219, 0, 0, 0.12);
-  color: var(--brand-primary);
-  font-size: 22px;
-  margin-bottom: 16px;
-}
-
-.summary-label {
-  font-size: 13px;
-  color: var(--muted-text);
-  margin-bottom: 6px;
-}
-
-.summary-value {
-  font-size: clamp(24px, 3vw, 32px);
-  font-weight: 800;
-  margin: 0 0 10px;
-}
-
-.summary-desc {
-  font-size: 13px;
-  color: var(--muted-text);
-  margin: 0;
-  line-height: 1.9;
-}
-
-.locked-panel {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  flex-wrap: wrap;
-}
-
-.locked-icon {
-  width: 56px;
-  height: 56px;
-  border-radius: 16px;
-  background: rgba(219, 0, 0, 0.12);
-  color: var(--brand-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 22px;
-}
-
-.locked-copy {
-  flex: 1;
-  min-width: 260px;
-}
-
-.locked-title {
-  font-size: 18px;
-  font-weight: 800;
-  margin: 0 0 6px;
-}
-
-.locked-desc {
-  margin: 0;
-  color: var(--muted-text);
-  line-height: 1.9;
-}
-
-.facility-tab-row {
-  display: flex;
-  align-items: stretch;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 20px;
-}
-
-.facility-tab {
-  min-width: 240px;
-  flex: 1 1 260px;
-  border: 1px solid var(--panel-border);
-  background: var(--surface-soft);
-  border-radius: 18px;
-  padding: 16px 18px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  text-align: right;
-  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
-}
-
-.facility-tab strong,
-.facility-tab small {
-  display: block;
-}
-
-.facility-tab small {
-  color: var(--muted-text);
-  margin-top: 4px;
-}
-
-.facility-tab:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: var(--panel-shadow);
-}
-
-.facility-tab.active {
-  border-color: rgba(219, 0, 0, 0.3);
-  background: linear-gradient(135deg, rgba(219, 0, 0, 0.08), rgba(138, 0, 0, 0.06));
-}
-
-.facility-tab:disabled,
-.facility-tab.disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.facility-tab-badge {
-  width: 38px;
-  height: 38px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: #fff;
-  border: 1px solid var(--panel-border);
-  font-weight: 800;
-  color: var(--brand-primary);
-  flex-shrink: 0;
-}
-
-.editing-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  border-radius: 999px;
-  background: #fff1f2;
-  color: #be123c;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.amount-group .input-group-text {
-  background: var(--surface-soft);
-  border-color: var(--panel-border);
-  color: var(--muted-text);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.amount-hint-card,
-.info-panel,
-.facility-section-card {
-  border: 1px solid var(--panel-border);
-  border-radius: 18px;
-  background: var(--surface-soft);
-  padding: 18px;
-  height: 100%;
-}
-
-.amount-hint-card {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--muted-text);
-}
-
-.amount-hint-card i {
-  color: var(--brand-primary);
-}
-
-.muted-panel {
-  background: rgba(138, 0, 0, 0.04);
-}
-
-.info-panel-title,
-.section-card-title {
-  font-size: 15px;
-  font-weight: 800;
-  margin: 0 0 8px;
-}
-
-.info-panel-line,
-.field-note {
-  font-size: 13px;
-  color: var(--muted-text);
-  margin-top: 8px;
-}
-
-.section-card-head {
-  margin-bottom: 12px;
-}
-
-.section-card-subtitle {
-  font-size: 12px;
-  color: var(--muted-text);
-  margin: 0;
-}
-
-.check-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-.check-tile-btn {
-  text-align: right;
-  border: 1px solid var(--panel-border);
-  background: var(--surface-color);
-  border-radius: 14px;
-  padding: 14px;
-  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
-}
-
-.check-tile-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--panel-shadow);
-}
-
-.check-tile-btn.active {
-  border-color: rgba(219, 0, 0, 0.35);
-  background: var(--chip-bg);
-}
-
-.check-tile-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 6px;
-}
-
-.check-indicator {
-  width: 28px;
-  height: 28px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(219, 0, 0, 0.08);
-  color: var(--brand-primary);
-}
-
-.entry-box {
-  min-height: 148px;
-}
-
-.entry-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: stretch;
-}
-
-.entry-row .btn {
-  min-width: 132px;
-}
-
-.entry-empty {
-  margin-top: 14px;
-  border: 1px dashed var(--panel-border);
-  border-radius: 14px;
-  padding: 16px;
-  color: var(--muted-text);
-  background: rgba(255, 255, 255, 0.55);
-}
-
-.chip-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.value-chip {
-  border: 1px solid #fee2e2;
-  background: #fff1f2;
-  color: #be123c;
-  border-radius: 999px;
-  padding: 8px 12px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.value-chip-alt {
-  border-color: #fef3c7;
-  background: #fff7ed;
-  color: #b45309;
-}
-
-.filter-row {
-  display: grid;
-  grid-template-columns: 1fr 220px auto;
-  gap: 12px;
-  align-items: center;
-}
-
-.search-box {
-  position: relative;
-}
-
-.search-icon {
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--muted-text);
-  font-size: 13px;
-}
-
-.search-input {
-  padding-right: 36px;
-}
-
-.compact-select {
-  min-width: 0;
-}
-
-.type-chip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 12px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.chip-yellow { background: #fef3c7; color: #b45309; }
-.chip-green { background: #dcfce7; color: #166534; }
-.chip-red { background: #ffe4e6; color: #be123c; }
-.chip-blue { background: #dbeafe; color: #1d4ed8; }
-.chip-gray { background: #e5e7eb; color: #4b5563; }
-
-.reason-box {
-  max-width: 240px;
-  color: var(--muted-text);
-  font-size: 13px;
-  line-height: 1.8;
-}
-
-.empty-card {
-  text-align: center;
-}
-
-.empty-icon {
-  font-size: 48px;
-  color: var(--muted-text);
-  opacity: 0.3;
-  margin-bottom: 16px;
-}
-
-.empty-card h3 {
-  font-size: 18px;
-  font-weight: 700;
-  margin-bottom: 8px;
-}
-
-.empty-card p {
-  font-size: 14px;
-  color: var(--muted-text);
-  margin-bottom: 0;
-  max-width: 440px;
-  margin-inline: auto;
-}
-
-.compact-empty {
-  padding: 48px 24px;
-}
-
-@media (max-width: 1199px) {
-  .check-grid,
-  .filter-row {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 767px) {
-  .content-card,
-  .summary-card,
-  .empty-card {
-    padding: 18px;
-  }
-
-  .entry-row,
-  .locked-panel {
-    grid-template-columns: 1fr;
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .facility-tab {
-    width: 100%;
-  }
-}
-
-.document-select-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 0.75rem;
-}
-
-.document-select-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.65rem;
-  padding: 0.85rem 1rem;
-  border: 1px solid var(--bs-border-color);
-  border-radius: 0.65rem;
-  background: var(--chip-bg);
-  cursor: pointer;
-  text-align: start;
-  transition: border-color 0.15s, background 0.15s;
-}
-
-.document-select-item:hover {
-  border-color: var(--bs-primary);
-}
-
-.document-select-item.active {
-  border-color: var(--bs-primary);
-  background: rgba(var(--bs-primary-rgb), 0.06);
-}
-
-.document-select-info {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-}
-
-.document-select-info strong {
-  font-size: 0.92rem;
-}
-
-.document-select-info small {
-  color: var(--bs-secondary-color);
-  font-size: 0.82rem;
-}
-</style>
+<style scoped src="./styles/BrokerLoanCreateView.css"></style>

@@ -1,5 +1,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import Swal from 'sweetalert2';
+import OtpCodeInput from './OtpCodeInput.vue';
 import { requestBrokerDealContractOtp, signBrokerDealContract } from '../services/broker-deal.api.js';
 
 const props = defineProps({
@@ -28,7 +30,7 @@ let drawing = false;
 let lastPoint = null;
 let resizeFrameId = null;
 
-const contractKey = computed(() => `${props.deal?.id}-${props.deal?.contractSignedByCustomer}-${props.deal?.contractSignedByBroker}`);
+const contractKey = computed(() => `${props.deal?.id}-${props.deal?.contractSignedByCustomer}-${props.deal?.contractSignedByBroker}-${props.deal?.updatedAt || ''}-${String(props.deal?.contractData || '').length}`);
 
 const stopTimer = () => {
   if (timerId) {
@@ -73,7 +75,7 @@ const setupCanvas = () => {
 
   const ratio = window.devicePixelRatio || 1;
   const width = resolveCanvasWidth(wrap, 300);
-  const height = window.innerWidth < 768 ? 240 : 310;
+  const height = window.innerWidth < 768 ? 170 : 220;
 
   canvas.width = width * ratio;
   canvas.height = height * ratio;
@@ -307,14 +309,19 @@ const resendOtp = async () => {
 };
 
 const submitSignature = async () => {
-  if (!otpCode.value.trim()) {
-    setFeedback('کد تایید را وارد کنید.', 'error');
+  if (otpCode.value.trim().length !== 4) {
+    setFeedback('کد تایید باید ۴ رقم باشد.', 'error');
     return;
   }
 
   const signature = currentSignature();
   if (!signature) {
     setFeedback('امضا خالی است.', 'error');
+    return;
+  }
+
+  const { isConfirmed } = await Swal.fire({ title: 'ثبت امضا', text: 'امضای کارگزار روی قرارداد ثبت شود؟', icon: 'question', confirmButtonText: 'بله، ثبت', cancelButtonText: 'انصراف', showCancelButton: true, reverseButtons: true });
+  if (!isConfirmed) {
     return;
   }
 
@@ -399,7 +406,7 @@ onBeforeUnmount(() => {
       <article v-for="item in deal.paymentTypes || []" :key="item.id || item.paymentType" class="contract-payment-card">
         <div class="contract-payment-title-row">
           <strong>{{ item.paymentTypeLabel }}</strong>
-          <span>{{ item.amount }} تومان</span>
+          <span>{{ Number(item.amount).toLocaleString() }} تومان</span>
         </div>
         <p>{{ item.description }}</p>
       </article>
@@ -487,7 +494,7 @@ onBeforeUnmount(() => {
               <button type="button" class="contract-otp-close" @click="otpOpen = false">×</button>
             </div>
 
-            <input v-model="otpCode" class="form-control form-control-lg" dir="ltr" inputmode="numeric" maxlength="6" placeholder="1234" />
+            <OtpCodeInput v-model="otpCode" :disabled="busy" :auto-focus="otpOpen" />
 
             <div class="signature-action-row">
               <button type="button" class="btn btn-outline-secondary" :disabled="busy || resendIn > 0" @click="resendOtp">
@@ -504,339 +511,4 @@ onBeforeUnmount(() => {
   </section>
 </template>
 
-<style scoped>
-.contract-stage-card {
-  padding: 18px;
-  border: 1px solid var(--panel-border);
-  border-radius: 18px;
-  background: linear-gradient(180deg, var(--surface-color) 0%, var(--surface-soft) 100%);
-  box-shadow: var(--panel-shadow);
-}
-
-.contract-stage-head,
-.contract-payment-title-row,
-.signature-stage-head,
-.contract-otp-head,
-.signature-action-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.contract-kicker {
-  display: inline-flex;
-  align-items: center;
-  min-height: 28px;
-  padding: 0 12px;
-  border-radius: 999px;
-  background: rgba(219, 0, 0, 0.08);
-  color: var(--brand-primary);
-  font-size: 11px;
-  font-weight: 800;
-  margin-bottom: 10px;
-}
-
-.contract-feedback {
-  margin-top: 14px;
-  padding: 12px 14px;
-  border-radius: 14px;
-  border: 1px solid transparent;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.contract-feedback.tone-success {
-  background: rgba(34, 197, 94, 0.12);
-  border-color: rgba(34, 197, 94, 0.18);
-  color: #15803d;
-}
-
-.contract-feedback.tone-error {
-  background: rgba(239, 68, 68, 0.12);
-  border-color: rgba(239, 68, 68, 0.18);
-  color: #b91c1c;
-}
-
-.contract-feedback.tone-info {
-  background: rgba(59, 130, 246, 0.12);
-  border-color: rgba(59, 130, 246, 0.18);
-  color: #1d4ed8;
-}
-
-.status-pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 36px;
-  padding: 0 14px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-.status-pill-pending {
-  background: rgba(245, 158, 11, 0.14);
-  color: #b45309;
-}
-
-.status-pill-done {
-  background: rgba(34, 197, 94, 0.14);
-  color: #166534;
-}
-
-.contract-sign-status-grid,
-.contract-payment-grid,
-.contract-content-grid {
-  display: grid;
-  gap: 12px;
-  margin-top: 16px;
-}
-
-.contract-sign-status-grid,
-.contract-payment-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.contract-content-grid {
-  grid-template-columns: 1fr;
-  align-items: start;
-}
-
-.contract-sign-status-card,
-.contract-payment-card,
-.signature-canvas-wrap,
-.contract-preview-shell {
-  border: 1px solid var(--panel-border);
-  border-radius: 16px;
-  background: var(--surface-color);
-}
-
-.contract-sign-status-card,
-.contract-payment-card {
-  padding: 14px;
-  display: grid;
-  gap: 8px;
-}
-
-.contract-sign-status-card.done {
-  border-color: rgba(34, 197, 94, 0.24);
-  background: rgba(34, 197, 94, 0.08);
-}
-
-.contract-sign-status-card strong,
-.contract-payment-title-row strong {
-  font-size: 14px;
-  font-weight: 800;
-}
-
-.contract-sign-status-card span,
-.contract-payment-title-row span,
-.contract-muted-note {
-  font-size: 12px;
-  color: var(--muted-text);
-}
-
-.contract-payment-card p {
-  margin: 0;
-  color: var(--muted-text);
-  font-size: 12px;
-  line-height: 1.9;
-}
-
-.contract-actions-col {
-  display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-}
-
-.contract-preview-shell {
-  padding: 8px;
-  min-height: 620px;
-}
-
-.contract-preview-shell--inline {
-  width: 100%;
-}
-
-.contract-preview-frame {
-  width: 100%;
-  min-height: 604px;
-  border: 0;
-  border-radius: 14px;
-  background: #fff;
-}
-
-.contract-preview-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 100000;
-  display: flex;
-  align-items: stretch;
-  justify-content: center;
-  padding: 16px;
-  background: rgba(15, 23, 42, 0.58);
-  backdrop-filter: blur(12px);
-}
-
-.contract-preview-modal {
-  width: min(100%, 1460px);
-  height: 100%;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 14px;
-  padding: 18px;
-  border-radius: 26px;
-  background:
-    radial-gradient(circle at top left, rgba(219, 0, 0, 0.08), transparent 32%),
-    linear-gradient(180deg, var(--surface-color) 0%, var(--surface-soft) 100%);
-  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.24);
-}
-
-.contract-preview-modal-head,
-.contract-preview-modal-actions {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.contract-preview-shell--fullscreen {
-  min-height: 100%;
-  height: 100%;
-  padding: 12px;
-}
-
-.contract-preview-frame--fullscreen {
-  min-height: 100%;
-  height: 100%;
-}
-
-.contract-preview-empty {
-  min-height: 240px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--muted-text);
-  font-size: 13px;
-}
-
-.signature-stage-shell {
-  margin-top: 16px;
-  display: grid;
-  gap: 14px;
-}
-
-.signature-canvas-wrap {
-  padding: 14px;
-  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
-  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.18), 0 16px 36px rgba(15, 23, 42, 0.08);
-}
-
-.signature-canvas {
-  width: 100%;
-  display: block;
-  border-radius: 14px;
-  border: 1px dashed rgba(219, 0, 0, 0.24);
-  background: #fff;
-  touch-action: none;
-}
-
-.contract-otp-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 80;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-  background: rgba(15, 23, 42, 0.48);
-  backdrop-filter: blur(8px);
-}
-
-.contract-otp-modal {
-  width: min(100%, 460px);
-  display: grid;
-  gap: 14px;
-  padding: 18px;
-  border-radius: 20px;
-  border: 1px solid var(--panel-border);
-  background: var(--surface-color);
-  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.2);
-}
-
-.contract-otp-close {
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
-  border: 1px solid var(--panel-border);
-  background: var(--surface-soft);
-  color: var(--heading-text);
-  font-size: 22px;
-  line-height: 1;
-}
-
-.contract-modal-fade-enter-active,
-.contract-modal-fade-leave-active {
-  transition: opacity 0.18s ease;
-}
-
-.contract-modal-fade-enter-from,
-.contract-modal-fade-leave-to {
-  opacity: 0;
-}
-
-@media (max-width: 991px) {
-  .contract-preview-modal,
-  .contract-preview-modal-head,
-  .contract-preview-modal-actions {
-    gap: 10px;
-  }
-}
-
-@media (max-width: 767px) {
-  .contract-stage-head,
-  .contract-payment-title-row,
-  .signature-stage-head,
-  .contract-otp-head,
-  .signature-action-row {
-    flex-direction: column;
-  }
-
-  .contract-sign-status-grid,
-  .contract-payment-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .contract-preview-shell {
-    min-height: 420px;
-  }
-
-  .contract-preview-frame {
-    min-height: 404px;
-  }
-
-  .signature-action-row .btn,
-  .contract-actions-col .btn {
-    width: 100%;
-  }
-
-  .contract-preview-overlay {
-    padding: 0;
-    align-items: flex-end;
-  }
-
-  .contract-preview-modal {
-    width: 100%;
-    height: 92vh;
-    padding: 16px;
-    border-radius: 28px 28px 0 0;
-  }
-
-  .contract-preview-modal-head,
-  .contract-preview-modal-actions {
-    flex-direction: column;
-  }
-}
-</style>
+<style scoped src="./styles/BrokerDealContractStage.css"></style>

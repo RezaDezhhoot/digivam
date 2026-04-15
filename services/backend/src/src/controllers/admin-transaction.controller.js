@@ -20,6 +20,16 @@ const TRANSACTION_TYPE_LABELS = {
   [Transaction.TYPES.WITHDRAW]: 'برداشت'
 };
 
+const PAYABLE_TYPE_LABELS = {
+  invoice: 'شارژ کیف پول',
+  deal_settlement: 'تسویه حساب معامله',
+  broker_confirmation: 'پیش‌پرداخت معامله',
+  broker_withdrawal: 'درخواست برداشت',
+  withdrawal_refund: 'استرداد برداشت',
+  admin_deposit: 'واریز توسط ادمین',
+  admin_withdraw: 'برداشت توسط ادمین'
+};
+
 const normalizeSearch = (value) => String(value || '').trim();
 const uniqueNumbers = (items = []) => [...new Set(items.map((item) => Number(item)).filter(Boolean))];
 const isNumeric = (value) => /^\d+$/.test(String(value || '').trim());
@@ -239,6 +249,9 @@ const serializeWalletTransaction = (transaction, wallet, holder, relatedInvoice)
   uuid: transaction.uuid,
   type: transaction.type,
   typeLabel: TRANSACTION_TYPE_LABELS[transaction.type] || transaction.type,
+  payableType: transaction.payableType || null,
+  subjectLabel: PAYABLE_TYPE_LABELS[transaction.payableType] || null,
+  subject: String(transaction.meta?.description || '').trim() || null,
   amount: String(transaction.amount || 0),
   confirmed: Boolean(transaction.confirmed),
   wallet: wallet ? serializeWallet(wallet) : null,

@@ -31,7 +31,7 @@ import {
 
 export const customerValidationRouter = Router();
 
-customerValidationRouter.use(requireAuth('customer'));
+customerValidationRouter.use(requireAuth('customer', { allowSuspended: true }));
 
 customerValidationRouter.get('/', listMyValidations);
 customerValidationRouter.get('/status/:validationId', validationIdParamValidator, validateRequest, getValidationStatus);

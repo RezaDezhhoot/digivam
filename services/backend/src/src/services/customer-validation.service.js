@@ -39,6 +39,11 @@ const buildFileUrl = (filePath) => {
   return `${env.backendBaseUrl}/uploads/${raw.replace(/^\/+/, '')}`;
 };
 
+const buildFileDownloadUrl = (fileId) => {
+  const numericId = Number(fileId || 0);
+  return numericId > 0 ? `${env.backendBaseUrl}/api/files/${numericId}/download` : null;
+};
+
 const getStoredItemKind = (item) => {
   if (!item || typeof item !== 'object') {
     return '';
@@ -211,7 +216,8 @@ const enrichDataWithFiles = async (data) => {
                 value: {
                   fileId: file.id,
                   fileName: file.data?.originalName || file.subject || `file-${file.id}`,
-                  url: buildFileUrl(file.path)
+                  url: buildFileUrl(file.path),
+                  downloadUrl: buildFileDownloadUrl(file.id)
                 }
               };
             }
@@ -265,9 +271,11 @@ export const serializeCustomerValidation = async (item) => {
     selfValidation: Boolean(raw.selfValidation),
     selfValidationFileId: raw.selfValidationFileId || null,
     selfValidationFileUrl,
+    selfValidationFileDownloadUrl: buildFileDownloadUrl(raw.selfValidationFileId),
     selfValidationFileName,
     adminAttachmentId: raw.adminAttachmentId || null,
     adminAttachmentUrl,
+    adminAttachmentDownloadUrl: buildFileDownloadUrl(raw.adminAttachmentId),
     adminAttachmentFileName,
     customer: raw.customer
       ? {

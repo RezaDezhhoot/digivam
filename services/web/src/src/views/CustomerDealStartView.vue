@@ -1,20 +1,40 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
+import Swal from 'sweetalert2';
 import CustomerDealContractStage from '../components/CustomerDealContractStage.vue';
 import CustomerDealPaymentStage from '../components/CustomerDealPaymentStage.vue';
 import CustomerPanelShell from '../components/CustomerPanelShell.vue';
+import DealChatModal from '../components/DealChatModal.vue';
+import OtpCodeInput from '../components/OtpCodeInput.vue';
 import PersianDatePickerInput from '../components/PersianDatePickerInput.vue';
+import { useAppToast } from '../composables/useToast.js';
 import { getWebFacilityBySlug } from '../services/web-loan.api.js';
-import { createCustomerDeal, getCustomerDeal, saveCustomerDealDocuments, verifyDealCashPayment } from '../services/customer-panel.api.js';
+import {
+  confirmCustomerDealTransfer,
+  createCustomerDeal,
+  getCustomerDeal,
+  getDealMessages,
+  getDealUnreadCount,
+  rateBrokerForDeal,
+  requestCustomerDealAdminReview,
+  requestCustomerDealTransferOtp,
+  saveCustomerDealDocuments,
+  sendDealMessage,
+  verifyDealCashPayment
+} from '../services/customer-panel.api.js';
+import { truncateWords } from '../utils/str.js';
 
 const route = useRoute();
 const router = useRouter();
+const toast = useAppToast();
 
 const loading = ref(true);
 const savingDraft = ref(false);
 const submittingDocuments = ref(false);
 const creatingDeal = ref(false);
+const downloadingContract = ref(false);
+const requestingAdminReview = ref(false);
 const errorText = ref('');
 const errorDetails = ref([]);
 const successText = ref('');
@@ -26,9 +46,23 @@ const installmentMonths = ref('');
 const interestRate = ref('');
 const fieldValues = ref({});
 const selectedFiles = ref({});
+const documentErrors = ref({});
+const adminReviewReason = ref('');
 const existingDealLink = ref('');
+const chatOpen = ref(false);
+const chatUnreadCount = ref(0);
+let unreadPollTimer = null;
 const resultHistoryOpen = ref(false);
 const activeStageTab = ref('submit');
+const transferOtpOpen = ref(false);
+const transferOtpCode = ref('');
+const transferOtpBusy = ref(false);
+const transferOtpResendIn = ref(0);
+let transferOtpTimerId = null;
+const ratingScore = ref(0);
+const ratingHover = ref(0);
+const ratingComment = ref('');
+const submittingRating = ref(false);
 const wizardStepperRef = ref(null);
 const jalaliDateFormatter = new Intl.DateTimeFormat('fa-IR-u-ca-persian', {
   year: 'numeric',
@@ -106,6 +140,7 @@ const clearFeedback = () => {
   successText.value = '';
   successDetails.value = [];
   existingDealLink.value = '';
+  documentErrors.value = {};
 };
 
 const setErrorFeedback = (message, details = []) => {
@@ -113,6 +148,7 @@ const setErrorFeedback = (message, details = []) => {
   successDetails.value = [];
   errorText.value = message || 'امکان انجام این عملیات وجود ندارد';
   errorDetails.value = normalizeMessages(details).filter((entry) => entry !== errorText.value);
+  toast.error(errorText.value);
 };
 
 const setSuccessFeedback = (message, details = []) => {
@@ -120,6 +156,7 @@ const setSuccessFeedback = (message, details = []) => {
   errorDetails.value = [];
   successText.value = message || 'عملیات با موفقیت انجام شد';
   successDetails.value = normalizeMessages(details).filter((entry) => entry !== successText.value);
+  toast.success(successText.value);
 };
 
 const extractErrorDetails = (error) => normalizeMessages(error?.data?.errors || error?.data?.details);
@@ -192,9 +229,21 @@ const dealProgressSummary = computed(() => {
 
   return `مرحله فعلی «${deal.value.stepLabel || 'در حال پردازش'}» است و اقدام بعدی با ${deal.value.actByLabel || 'سیستم'} خواهد بود.`;
 });
+
+const isNonBankingDeal = computed(() => {
+  const rawType = deal.value?.type || deal.value?.facilityData?.type || deal.value?.facility?.type || displayFacility.value?.type;
+  return String(rawType || '').toLowerCase() === 'none_banking';
+});
+
+const transferStageTitle = computed(() => (isNonBankingDeal.value ? 'انتقال وام' : 'انتقال امتیاز'));
+
 const wizardSteps = computed(() => {
   if (Array.isArray(deal.value?.wizardSteps) && deal.value.wizardSteps.length) {
-    return deal.value.wizardSteps;
+    return deal.value.wizardSteps.map((item) => (
+      item.key === 'transfer'
+        ? { ...item, title: transferStageTitle.value }
+        : item
+    ));
   }
 
   const definitions = [
@@ -203,7 +252,7 @@ const wizardSteps = computed(() => {
     { key: 'verify_broker', title: 'بررسی کارگزار', description: 'کارگزار مدارک و اطلاعات ثبت‌شده را بررسی می‌کند.' },
     { key: 'contract', title: 'قرارداد', description: 'جزییات قراردادی و تاییدهای لازم ثبت می‌شود.' },
     { key: 'payment', title: 'پرداخت', description: 'پرداخت‌های مرتبط با پرونده در این مرحله ثبت می‌شود.' },
-    { key: 'transfer', title: 'انتقال امتیاز', description: 'انتقال امتیاز و هماهنگی اجرایی توسط کارگزار انجام می‌شود.' },
+    { key: 'transfer', title: transferStageTitle.value, description: `${transferStageTitle.value} و هماهنگی اجرایی توسط کارگزار انجام می‌شود.` },
     { key: 'verify_customer', title: 'تایید مشتری', description: 'تایید نهایی انتقال یا دریافت از سمت شما انجام می‌شود.' },
     { key: 'finished', title: 'اتمام معامله', description: 'پرونده بسته می‌شود و نتیجه نهایی در تاریخچه باقی می‌ماند.' }
   ];
@@ -292,7 +341,7 @@ const statusFacts = computed(() => {
     { label: 'نوع معامله', value: displayTypeLabel.value || '-' },
     { label: 'زیرشاخه', value: displayFacility.value?.loanTypeTitle || '-' },
     { label: 'مدارک موردنیاز', value: `${formatNumber(currentDocuments.value.length)} مورد` },
-    { label: 'وضعیت فعلی', value: hasDocuments.value ? 'آماده ثبت یا ذخیره پیش نویس' : 'آماده ایجاد معامله' }
+    { label: 'وضعیت فعلی', value: 'آماده ایجاد معامله' }
   ];
 });
 const facilityFacts = computed(() => {
@@ -310,8 +359,8 @@ const pageChecklist = computed(() => {
   if (!deal.value) {
     return [
       'مبلغ، اقساط و نرخ سود را با دقت نهایی کنید.',
-      hasDocuments.value ? 'همه مدارک و داده‌های خواسته‌شده را از همین صفحه تکمیل کنید.' : 'این وام در شروع، مدرک اضافه‌ای از شما نمی‌خواهد.',
-      hasDocuments.value ? 'اگر هنوز آماده ارسال نیستید، ابتدا پیش نویس ذخیره کنید.' : 'پس از ایجاد معامله، ادامه وضعیت از همین صفحه پیگیری می‌شود.'
+      'پس از ایجاد معامله، صفحه تکمیل مدارک نمایش داده می‌شود.',
+      'ادامه وضعیت و پیگیری پرونده از همین صفحه انجام می‌شود.'
     ];
   }
 
@@ -365,6 +414,7 @@ const resultHistoryEntries = computed(() => (Array.isArray(deal.value?.resultHis
 const canShowResultHistory = computed(() => resultHistoryEntries.value.length > 0);
 const canShowReadonlyDocuments = computed(() => Boolean(deal.value && currentDocuments.value.length && !canEditDocuments.value && deal.value?.step !== 'contract'));
 const paymentFacts = computed(() => (Array.isArray(deal.value?.paymentTypes) ? deal.value.paymentTypes : []));
+const transferAttachments = computed(() => (Array.isArray(deal.value?.transferData?.attachments) ? deal.value.transferData.attachments : []));
 const shellStats = computed(() => [
   { label: 'مبلغ انتخابی', value: `${formatNumber(requestedAmount.value || deal.value?.amount || 0)} تومان` },
   { label: 'اقساط', value: `${formatNumber(installmentMonths.value || deal.value?.installments || 0)} ماه` },
@@ -374,6 +424,18 @@ const shellStats = computed(() => [
     value: `${formatNumber(deal.value?.completedDocuments || countCompletedDocuments(currentDocuments.value))} / ${formatNumber(deal.value?.documentsCount || currentDocuments.value.length)}`
   }
 ]);
+const adminReviewInfo = computed(() => deal.value?.adminReviewData || null);
+const hasAdminReviewRecord = computed(() => Boolean(deal.value?.adminReviewMode || adminReviewInfo.value?.reason));
+const adminReviewHeadline = computed(() => (deal.value?.adminReviewMode ? 'پرونده در حال بررسی مدیریت است' : 'آخرین ثبت بررسی مدیریت'));
+const adminReviewSummary = computed(() => {
+  if (!adminReviewInfo.value) {
+    return '';
+  }
+
+  return deal.value?.adminReviewMode
+    ? 'تا پایان بررسی، اقدام جدیدی از سمت شما یا کارگزار روی این پرونده انجام نمی‌شود.'
+    : 'این توضیح آخرین دلیل ثبت‌شده برای ارجاع پرونده به مدیریت است.';
+});
 
 const canCreateDeal = computed(() => !isExistingDeal.value && displayFacility.value);
 const canEditDocuments = computed(() => deal.value?.canSubmitDocuments);
@@ -385,11 +447,14 @@ const canCreateAndSubmit = computed(() => canCreateDeal.value);
 const getHistoryActionLabel = (entry) => historyActionLabels[entry?.action] || 'بروزرسانی';
 const getHistoryActorLabel = (entry) => entry?.actorName || historyActorLabels[entry?.actorType] || 'سیستم';
 
-const handleContractUpdate = (item) => {
+const handleContractUpdate = async (item) => {
   deal.value = item;
   activeStageTab.value = item?.step || activeStageTab.value;
   syncFieldsFromDocuments(item?.documents || []);
   selectedFiles.value = {};
+  if (isExistingDeal.value) {
+    await loadDeal();
+  }
   dispatchDealUpdate();
 };
 
@@ -398,6 +463,201 @@ const handlePaymentUpdate = (item) => {
   deal.value = item;
   activeStageTab.value = item.step || activeStageTab.value;
   dispatchDealUpdate();
+};
+
+const createPdfExportNode = () => {
+  const html = deal.value?.contractData || '';
+  const wrapper = document.createElement('div');
+  wrapper.style.position = 'fixed';
+  wrapper.style.right = '0';
+  wrapper.style.bottom = '0';
+  wrapper.style.width = '1024px';
+  wrapper.style.opacity = '0.01';
+  wrapper.style.pointerEvents = 'none';
+  wrapper.style.zIndex = '-1';
+  wrapper.setAttribute('aria-hidden', 'true');
+
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+  doc.querySelectorAll('style').forEach((style) => {
+    const clonedStyle = document.createElement('style');
+    clonedStyle.textContent = style.textContent;
+    wrapper.appendChild(clonedStyle);
+  });
+
+  const bodyDiv = document.createElement('div');
+  bodyDiv.innerHTML = doc.body?.innerHTML || html;
+  wrapper.appendChild(bodyDiv);
+  document.body.appendChild(wrapper);
+  return { wrapper, exportNode: bodyDiv.querySelector('.deal-contract-wrap') || bodyDiv };
+};
+
+const waitForPdfImages = async (container) => {
+  const images = Array.from(container.querySelectorAll('img') || []);
+  await Promise.all(images.map((image) => new Promise((resolve) => {
+    if (image.complete) {
+      resolve();
+      return;
+    }
+
+    image.addEventListener('load', resolve, { once: true });
+    image.addEventListener('error', resolve, { once: true });
+  })));
+};
+
+const downloadContractPdf = async () => {
+  if (!deal.value?.contractData || downloadingContract.value) {
+    return;
+  }
+
+  downloadingContract.value = true;
+  let container = null;
+
+  try {
+    const module = await import('html2pdf.js');
+    const html2pdf = module.default || module;
+    const { wrapper, exportNode } = createPdfExportNode();
+    container = wrapper;
+    await waitForPdfImages(wrapper);
+
+    await html2pdf()
+      .set({
+        margin: [0, 0, 0, 0],
+        filename: `deal-contract-${deal.value.id}.pdf`,
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak: { mode: ['css', 'legacy'] }
+      })
+      .from(exportNode)
+      .save();
+
+    setSuccessFeedback('فایل قرارداد با موفقیت دانلود شد');
+  } catch (error) {
+    setErrorFeedback(error?.message || 'دانلود فایل قرارداد با خطا مواجه شد');
+  } finally {
+    container?.remove();
+    downloadingContract.value = false;
+  }
+};
+
+const stopTransferOtpTimer = () => {
+  if (transferOtpTimerId) { clearInterval(transferOtpTimerId); transferOtpTimerId = null; }
+};
+
+const startTransferOtpTimer = (seconds) => {
+  stopTransferOtpTimer();
+  transferOtpResendIn.value = Number(seconds || 0);
+  if (transferOtpResendIn.value <= 0) return;
+  transferOtpTimerId = setInterval(() => {
+    transferOtpResendIn.value -= 1;
+    if (transferOtpResendIn.value <= 0) stopTransferOtpTimer();
+  }, 1000);
+};
+
+const requestTransferOtp = async () => {
+  if (!deal.value?.id) return;
+  transferOtpBusy.value = true;
+  clearFeedback();
+  try {
+    const data = await requestCustomerDealTransferOtp(deal.value.id);
+    transferOtpOpen.value = true;
+    startTransferOtpTimer(data.resendIn);
+  } catch (error) {
+    if (error.status === 409) {
+      transferOtpOpen.value = true;
+      startTransferOtpTimer(error.data?.resendIn || 0);
+    } else {
+      setErrorFeedback(error.message, extractErrorDetails(error));
+    }
+  } finally {
+    transferOtpBusy.value = false;
+  }
+};
+
+const handleTransferConfirmation = async () => {
+  if (!deal.value?.id) return;
+
+  const { isConfirmed } = await Swal.fire({ title: `تایید ${transferStageTitle.value}`, text: `ابتدا کد تایید پیامکی دریافت و سپس ${transferStageTitle.value} را نهایی کنید.`, icon: 'question', confirmButtonText: 'دریافت کد تایید', cancelButtonText: 'انصراف', showCancelButton: true, reverseButtons: true });
+  if (!isConfirmed) return;
+
+  await requestTransferOtp();
+};
+
+const submitTransferOtp = async () => {
+  if (transferOtpCode.value.trim().length !== 4) {
+    setErrorFeedback('کد تایید باید ۴ رقم باشد');
+    return;
+  }
+
+  transferOtpBusy.value = true;
+  clearFeedback();
+
+  try {
+    const data = await confirmCustomerDealTransfer(deal.value.id, { code: transferOtpCode.value.trim() });
+    deal.value = data.item || deal.value;
+    activeStageTab.value = data.item?.step || 'finished';
+    transferOtpOpen.value = false;
+    transferOtpCode.value = '';
+    stopTransferOtpTimer();
+    dispatchDealUpdate();
+    setSuccessFeedback(data.message || `${transferStageTitle.value} تایید شد`, ['پرونده با موفقیت نهایی شد و در وضعیت انجام شده قرار گرفت.']);
+    await load();
+  } catch (error) {
+    setErrorFeedback(error.message, extractErrorDetails(error));
+  } finally {
+    transferOtpBusy.value = false;
+  }
+};
+
+const handleSubmitRating = async () => {
+  if (!deal.value?.id || submittingRating.value || !ratingScore.value) {
+    return;
+  }
+
+  clearFeedback();
+  submittingRating.value = true;
+
+  try {
+    const data = await rateBrokerForDeal(deal.value.id, {
+      score: ratingScore.value,
+      comment: ratingComment.value.trim() || undefined
+    });
+    deal.value.hasRated = true;
+    deal.value.canRate = false;
+    setSuccessFeedback(data.message || 'امتیاز شما ثبت شد');
+  } catch (error) {
+    setErrorFeedback(error.message, extractErrorDetails(error));
+  } finally {
+    submittingRating.value = false;
+  }
+};
+
+const handleRequestAdminReview = async () => {
+  if (!deal.value?.id || requestingAdminReview.value || !deal.value?.canCustomerRequestAdminReview) {
+    return;
+  }
+
+  const reason = adminReviewReason.value.trim();
+  if (reason.length < 5) {
+    setErrorFeedback('برای گزارش به مدیریت باید دلیل خود را کامل وارد کنید');
+    return;
+  }
+
+  clearFeedback();
+  requestingAdminReview.value = true;
+  try {
+    const data = await requestCustomerDealAdminReview(deal.value.id, { reason });
+    deal.value = data.item || deal.value;
+    activeStageTab.value = data.item?.step || activeStageTab.value;
+    adminReviewReason.value = '';
+    dispatchDealUpdate();
+    setSuccessFeedback(data.message || 'پرونده برای بررسی مدیریت ثبت شد', ['تا پایان این بررسی، امکان اقدام جدید روی پرونده موقتاً متوقف می‌شود.']);
+    await load();
+  } catch (error) {
+    setErrorFeedback(error.message, extractErrorDetails(error));
+  } finally {
+    requestingAdminReview.value = false;
+  }
 };
 
 function countCompletedDocuments(documents) {
@@ -440,6 +700,7 @@ const loadFacility = async () => {
 const loadDeal = async () => {
   const data = await getCustomerDeal(route.params.id);
   deal.value = data.item;
+  adminReviewReason.value = '';
   activeStageTab.value = data.item?.step || 'submit';
   requestedAmount.value = data.item.amount || '';
   installmentMonths.value = data.item.installments || '';
@@ -590,38 +851,51 @@ const formatReadonlyDocumentValue = (document) => {
 const validateDocumentCollection = ({ requireComplete }) => {
   const messages = [];
 
+  const perFieldErrors = {};
+
   for (const document of currentDocuments.value) {
+    const key = fieldKeyOf(document.id);
+
     if (document.type === 'file') {
       const file = getSelectedFile(document.id);
       const existingValue = document.value?.url || document.value?.fileId || document.value;
 
       if (requireComplete && document.required && !file && !existingValue) {
-        messages.push(`مدرک «${document.title}» الزامی است`);
+        const msg = `مدرک «${document.title}» الزامی است`;
+        messages.push(msg);
+        perFieldErrors[key] = 'این فیلد الزامی است';
       }
 
       if (file && document.max) {
         const maxBytes = Number(document.max || 0) * 1024;
         if (maxBytes > 0 && file.size > maxBytes) {
-          messages.push(`حجم فایل «${document.title}» نباید بیشتر از ${formatFileSize(maxBytes)} باشد`);
+          const msg = `حجم فایل «${document.title}» نباید بیشتر از ${formatFileSize(maxBytes)} باشد`;
+          messages.push(msg);
+          perFieldErrors[key] = `حجم فایل نباید بیشتر از ${formatFileSize(maxBytes)} باشد`;
         }
       }
 
       continue;
     }
 
-    const value = fieldValues.value[fieldKeyOf(document.id)] ?? '';
+    const value = fieldValues.value[key] ?? '';
     if (requireComplete && document.required && !String(value).trim()) {
-      messages.push(`فیلد «${document.title}» الزامی است`);
+      const msg = `فیلد «${document.title}» الزامی است`;
+      messages.push(msg);
+      perFieldErrors[key] = 'این فیلد الزامی است';
     }
 
     if (document.max) {
       const normalized = document.type === 'number' ? String(value).replace(/\D/g, '') : String(value).trim();
       if (normalized.length > Number(document.max || 0)) {
-        messages.push(`طول «${document.title}» نباید بیشتر از ${formatNumber(document.max)} ${document.type === 'number' ? 'رقم' : 'کاراکتر'} باشد`);
+        const msg = `طول «${document.title}» نباید بیشتر از ${formatNumber(document.max)} ${document.type === 'number' ? 'رقم' : 'کاراکتر'} باشد`;
+        messages.push(msg);
+        perFieldErrors[key] = `حداکثر ${formatNumber(document.max)} ${document.type === 'number' ? 'رقم' : 'کاراکتر'}`;
       }
     }
   }
 
+  documentErrors.value = perFieldErrors;
   return messages;
 };
 
@@ -639,14 +913,8 @@ const buildDocumentsFormData = (submit) => {
   return formData;
 };
 
-const createDealRequest = async ({ submitDocumentsImmediately = false } = {}) => {
+const createDealRequest = async () => {
   if (!displayFacility.value || creatingDeal.value) {
-    return;
-  }
-
-  const validationMessages = validateDocumentCollection({ requireComplete: submitDocumentsImmediately });
-  if (validationMessages.length) {
-    setErrorFeedback('چند مورد در بخش مدارک نیاز به اصلاح دارد', validationMessages);
     return;
   }
 
@@ -661,19 +929,8 @@ const createDealRequest = async ({ submitDocumentsImmediately = false } = {}) =>
       interestRate: interestRate.value ? Number(interestRate.value) : null
     });
 
-    let createdItem = created.item;
-
-    if (currentDocuments.value.length) {
-      const data = await saveCustomerDealDocuments(created.item.id, buildDocumentsFormData(submitDocumentsImmediately));
-      createdItem = data.item;
-    }
-
     dispatchDealUpdate();
-    await router.replace(
-      submitDocumentsImmediately
-        ? { path: `/customer/deals/${createdItem.id}`, query: { sent: '1', refresh: String(Date.now()) } }
-        : `/customer/deals/${createdItem.id}`
-    );
+    await router.replace(`/customer/deals/${created.item.id}`);
   } catch (error) {
     setErrorFeedback(error.message, extractErrorDetails(error));
     existingDealLink.value = error?.data?.dealId ? `/customer/deals/${error.data.dealId}` : '';
@@ -691,6 +948,13 @@ const submitDocuments = async (submit) => {
   if (validationMessages.length) {
     setErrorFeedback('چند مورد در بخش مدارک نیاز به اصلاح دارد', validationMessages);
     return;
+  }
+
+  if (submit) {
+    const { isConfirmed } = await Swal.fire({ title: 'ارسال مدارک', text: 'مدارک فعلی برای بررسی کارگزار ارسال شود؟', icon: 'question', confirmButtonText: 'بله، ارسال', cancelButtonText: 'انصراف', showCancelButton: true, reverseButtons: true });
+    if (!isConfirmed) {
+      return;
+    }
   }
 
   clearFeedback();
@@ -726,7 +990,40 @@ watch(() => route.fullPath, load);
 watch(activeStageTab, () => {
   wizardStepperRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 });
+
+const fetchUnreadCount = async () => {
+  if (!deal.value?.id) return;
+  try {
+    const data = await getDealUnreadCount(deal.value.id);
+    chatUnreadCount.value = data.unreadCount || 0;
+  } catch { /* silent */ }
+};
+
+const startUnreadPoll = () => {
+  stopUnreadPoll();
+  fetchUnreadCount();
+  unreadPollTimer = setInterval(fetchUnreadCount, 30000);
+};
+
+const stopUnreadPoll = () => {
+  if (unreadPollTimer) {
+    clearInterval(unreadPollTimer);
+    unreadPollTimer = null;
+  }
+};
+
+watch(() => deal.value?.id, (id) => {
+  if (id) startUnreadPoll();
+  else stopUnreadPoll();
+});
+
+watch(chatOpen, (open) => {
+  if (!open) fetchUnreadCount();
+});
+
 onMounted(load);
+onUnmounted(stopUnreadPoll);
+onUnmounted(stopTransferOtpTimer);
 </script>
 
 <template>
@@ -734,13 +1031,7 @@ onMounted(load);
     <CustomerPanelShell
       kicker="شروع معامله"
       :title="isExistingDeal ? 'جزئیات معامله امتیاز وام' : 'شروع معامله امتیاز وام'"
-      description="مبلغ، اقساط و نرخ سود را نهایی کنید و در صورت نیاز مدارک را برای بررسی کارگزار بفرستید."
-      :stats="shellStats"
     >
-      <template #actions>
-        <RouterLink class="customer-hero-link muted" to="/customer/deals">بازگشت به معامله‌ها</RouterLink>
-      </template>
-
       <div v-if="loading" class="customer-loading-card">
         <div class="customer-spinner"></div>
         <span>در حال بارگذاری اطلاعات معامله...</span>
@@ -773,23 +1064,56 @@ onMounted(load);
           </ul>
         </article>
 
+        <article v-if="deal && hasAdminReviewRecord && deal.adminReviewMode" class="deal-admin-review-banner" :class="{ active: deal.adminReviewMode }">
+          <div class="deal-admin-review-banner-head">
+            <div class="deal-admin-review-icon">
+              <i :class="deal.adminReviewMode ? 'fa-solid fa-shield-halved' : 'fa-solid fa-clock-rotate-left'"></i>
+            </div>
+            <div>
+              <strong>{{ adminReviewHeadline }}</strong>
+              <p>{{ adminReviewSummary }}</p>
+            </div>
+          </div>
+
+          <div class="deal-admin-review-grid">
+            <article class="deal-admin-review-card">
+              <span>دلیل ثبت‌شده</span>
+              <strong>{{ adminReviewInfo?.reason || 'ثبت نشده' }}</strong>
+            </article>
+            <article class="deal-admin-review-card">
+              <span>درخواست‌دهنده</span>
+              <strong>{{ adminReviewInfo?.requestedByLabel || '-' }}</strong>
+            </article>
+            <article class="deal-admin-review-card">
+              <span>زمان ثبت</span>
+              <strong>{{ adminReviewInfo?.requestedAtLabel || '-' }}</strong>
+            </article>
+          </div>
+        </article>
+
         <section class="deal-card deal-hero-card">
           <div class="deal-hero-main">
             <div class="deal-card-head deal-hero-head">
               <div>
-                <span class="deal-kicker">{{ deal ? 'پرونده فعال شما' : 'شروع پرونده جدید' }}</span>
+                <span class="deal-kicker">{{ deal?.dealCode || (deal ? 'پرونده فعال شما' : 'شروع پرونده جدید') }}</span>
                 <h2>{{ deal?.facility?.title || displayFacility?.title || 'معامله امتیاز وام' }}</h2>
                 <p>
                   {{
                     deal
                       ? dealProgressSummary
-                      : 'مبلغ، اقساط و نرخ سود را نهایی کنید. اگر این وام مدرک بخواهد، همان‌جا پرونده را ذخیره یا مستقیماً برای کارگزار ارسال می‌کنید.'
+                      : 'مبلغ، اقساط و نرخ سود را نهایی کنید و معامله را ایجاد کنید. پس از ایجاد معامله، صفحه تکمیل مدارک نمایش داده می‌شود.'
                   }}
                 </p>
               </div>
 
               <div class="deal-hero-tools">
                 <span v-if="deal" class="deal-status-chip" :class="`status-${deal.status}`">{{ deal.statusLabel }}</span>
+
+                <button v-if="deal?.id" class="deal-chat-fab" title="گفتگوی معامله" @click="chatOpen = true">
+                  <i class="fa-solid fa-comments me-1"></i>
+                  گفتگو
+                  <span v-if="chatUnreadCount" class="deal-chat-badge">{{ chatUnreadCount }}</span>
+                </button>
 
                 <div v-if="deal" class="result-history-dropup">
                   <button type="button" class="result-history-button" :disabled="!canShowResultHistory" @click="resultHistoryOpen = !resultHistoryOpen">
@@ -800,14 +1124,16 @@ onMounted(load);
 
                   <transition name="dropup-fade">
                     <div v-if="resultHistoryOpen && canShowResultHistory" class="result-history-panel">
-                      <article v-for="entry in resultHistoryEntries" :key="entry.id" class="result-history-item">
-                        <div class="result-history-head">
-                          <strong>{{ getHistoryActionLabel(entry) }}</strong>
-                          <span>{{ getHistoryActorLabel(entry) }}</span>
+                      <div v-for="entry in resultHistoryEntries" :key="entry.id" class="result-history-item">
+                        <div class="result-history-dot"></div>
+                        <div>
+                          <div class="result-history-title">{{ getHistoryActionLabel(entry) }} توسط {{ getHistoryActorLabel(entry) }}</div>
+                          <div class="result-history-date">{{ formatJalaliDate(entry.createdAt, { withTime: true }) }}</div>
+                          <p v-if="entry.reason" class="result-history-text">{{ entry.reason }}</p>
+                          <p v-if="entry.note && entry.note !== entry.reason" class="result-history-text">یادداشت: {{ entry.note }}</p>
+                          <p v-if="entry.message && entry.message !== entry.reason && entry.message !== entry.note" class="result-history-text">{{ entry.message }}</p>
                         </div>
-                        <p>{{ entry.reason || entry.note || entry.message || 'بدون توضیح' }}</p>
-                        <small>{{ formatJalaliDate(entry.createdAt, { withTime: true }) }}</small>
-                      </article>
+                      </div>
                     </div>
                   </transition>
                 </div>
@@ -834,11 +1160,8 @@ onMounted(load);
             </div>
 
             <div v-if="canCreateDeal" class="deal-action-row">
-              <button v-if="canCreateDraft" class="customer-secondary-btn" :disabled="creatingDeal" @click="createDealRequest({ submitDocumentsImmediately: false })">
-                {{ creatingDeal ? 'در حال ایجاد...' : 'ایجاد معامله و ذخیره پیش نویس' }}
-              </button>
-              <button class="customer-primary-btn" :disabled="creatingDeal" @click="createDealRequest({ submitDocumentsImmediately: hasDocuments })">
-                {{ creatingDeal ? 'در حال ایجاد...' : hasDocuments ? 'ایجاد معامله و ارسال مدارک' : 'ایجاد معامله' }}
+              <button class="customer-primary-btn" :disabled="creatingDeal" @click="createDealRequest()">
+                {{ creatingDeal ? 'در حال ایجاد...' : 'ایجاد معامله' }}
               </button>
             </div>
           </div>
@@ -889,6 +1212,29 @@ onMounted(load);
               <div v-if="selectedStageMeta" class="deal-stage-spotlight">
                 <strong>{{ selectedStageMeta.title }}</strong>
                 <p>{{ activeStageSummary }}</p>
+              </div>
+
+              <div v-if="deal && canShowResultHistory" class="deal-history-dropup-wrap">
+                <button type="button" class="deal-history-dropup-toggle" @click="resultHistoryOpen = !resultHistoryOpen">
+                  <i class="fa-solid fa-clock-rotate-left"></i>
+                  {{ resultHistoryOpen ? 'بستن تاریخچه' : 'تاریخچه نتیجه‌ها' }}
+                  <span class="deal-history-dropup-badge">{{ formatNumber(resultHistoryEntries.length) }}</span>
+                </button>
+
+                <transition name="dropup-fade">
+                  <div v-if="resultHistoryOpen" class="deal-history-dropup-panel">
+                    <div v-for="entry in resultHistoryEntries" :key="entry.id" class="result-history-item">
+                      <div class="result-history-dot"></div>
+                      <div>
+                        <div class="result-history-title">{{ getHistoryActionLabel(entry) }} توسط {{ getHistoryActorLabel(entry) }}</div>
+                        <div class="result-history-date">{{ formatJalaliDate(entry.createdAt, { withTime: true }) }}</div>
+                        <p v-if="entry.reason" class="result-history-text">{{ entry.reason }}</p>
+                        <p v-if="entry.note && entry.note !== entry.reason" class="result-history-text">یادداشت: {{ entry.note }}</p>
+                        <p v-if="entry.message && entry.message !== entry.reason && entry.message !== entry.note" class="result-history-text">{{ entry.message }}</p>
+                      </div>
+                    </div>
+                  </div>
+                </transition>
               </div>
             </section>
 
@@ -951,7 +1297,7 @@ onMounted(load);
               <div v-if="displayValidation.result" class="deal-validation-note">{{ displayValidation.result }}</div>
             </section>
 
-            <section v-if="activeStageTab === 'submit' && canShowEditableDocuments" class="deal-card">
+            <section v-if="activeStageTab === 'submit' && canShowEditableDocuments && isExistingDeal" class="deal-card">
               <div class="deal-card-head">
                 <div>
                   <h3>مدارک و داده‌های موردنیاز</h3>
@@ -1004,10 +1350,11 @@ onMounted(load);
                       />
 
                       <div v-if="document.value?.url" class="uploaded-file-row">
-                        <a :href="document.value.url" target="_blank" rel="noreferrer">{{ document.value.fileName || 'فایل فعلی' }}</a>
+                        <a :href="document.value.downloadUrl || document.value.url" download rel="noreferrer">{{ document.value.fileName || 'فایل فعلی' }}</a>
                       </div>
                       <button v-if="getSelectedFile(document.id)" type="button" class="upload-field-clear" @click="clearSelectedFile(document.id)">حذف فایل انتخاب‌شده</button>
                     </div>
+                    <div v-if="documentErrors[fieldKeyOf(document.id)]" class="deal-field-error"><i class="fa-solid fa-circle-exclamation"></i> {{ documentErrors[fieldKeyOf(document.id)] }}</div>
                   </template>
 
                   <PersianDatePickerInput
@@ -1021,11 +1368,14 @@ onMounted(load);
                     v-else-if="document.type === 'text' || document.type === 'number'"
                     :type="document.type === 'number' ? 'number' : 'text'"
                     class="form-control deal-input"
+                    :class="{ 'deal-input-error': documentErrors[fieldKeyOf(document.id)] }"
                     :inputmode="document.type === 'number' ? 'numeric' : undefined"
                     :maxlength="document.type === 'text' && document.max ? Number(document.max) : undefined"
                     :value="fieldValues[fieldKeyOf(document.id)] ?? ''"
                     @input="updateFieldValue(document.id, $event.target.value)"
                   />
+
+                  <div v-if="document.type !== 'file' && documentErrors[fieldKeyOf(document.id)]" class="deal-field-error"><i class="fa-solid fa-circle-exclamation"></i> {{ documentErrors[fieldKeyOf(document.id)] }}</div>
                 </article>
               </div>
 
@@ -1077,8 +1427,8 @@ onMounted(load);
                   </div>
 
                   <div class="deal-readonly-value">
-                    <a v-if="document.type === 'file' && document.value?.url" class="customer-inline-link" :href="document.value.url" target="_blank" rel="noreferrer">
-                      {{ document.value.fileName || 'مشاهده فایل ثبت‌شده' }}
+                    <a v-if="document.type === 'file' && document.value?.url" class="customer-inline-link" :href="document.value.downloadUrl || document.value.url" download rel="noreferrer">
+                      {{ truncateWords(document.value.fileName || 'مشاهده فایل ثبت‌شده') }}
                     </a>
                     <span v-else-if="document.value !== null && document.value !== undefined && document.value !== ''" class="document-text">{{ formatReadonlyDocumentValue(document) }}</span>
                     <span v-else class="deal-empty-chip">ثبت نشده</span>
@@ -1092,7 +1442,106 @@ onMounted(load);
               <div v-else class="deal-validation-note">اطلاعات پرداخت در دسترس نیست.</div>
             </section>
 
-            <section v-if="deal && ['verify_broker', 'transfer', 'verify_customer', 'finished'].includes(activeStageTab)" class="deal-card">
+            <section v-if="deal && activeStageTab === 'transfer'" class="deal-card deal-wait-stage">
+              <div class="deal-wait-icon"><i class="fa-solid fa-hourglass-half"></i></div>
+              <div>
+                <h3>در انتظار ثبت اطلاعات {{ transferStageTitle }} توسط کارگزار</h3>
+                <p>کارگزار باید در این مرحله توضیحات {{ transferStageTitle }} و فایل‌های مرتبط را ثبت کند. پس از تکمیل این بخش، جزئیات از همین صفحه نمایش داده می‌شود.</p>
+              </div>
+            </section>
+
+            <section v-if="deal && activeStageTab === 'verify_customer' && deal.transferData" class="deal-card">
+              <div class="deal-card-head">
+                <div>
+                  <h3>تایید {{ transferStageTitle }}</h3>
+                  <p>قرارداد و پیوست‌های مرحله {{ transferStageTitle }} را مرور کنید و در صورت صحت، انتقال را تایید نهایی کنید.</p>
+                </div>
+              </div>
+
+              <div class="deal-transfer-summary">
+                <p>{{ deal.transferData.description }}</p>
+                <div class="deal-summary-grid compact-grid">
+                  <article class="deal-summary-card">
+                    <span>ثبت‌کننده</span>
+                    <strong>{{ deal.transferData.submittedBy?.name || 'کارگزار' }}</strong>
+                  </article>
+                  <article class="deal-summary-card">
+                    <span>زمان ثبت</span>
+                    <strong>{{ deal.transferData.submittedAtLabel || '-' }}</strong>
+                  </article>
+                </div>
+              </div>
+
+              <div class="deal-transfer-files deal-transfer-files-stack">
+                <button v-if="deal.contractData" type="button" class="deal-transfer-file deal-transfer-asset contract-download-btn" :disabled="downloadingContract" @click="downloadContractPdf">
+                  <span class="deal-transfer-asset-icon contract">
+                    <i class="fa-solid fa-file-contract"></i>
+                  </span>
+                  <span class="deal-transfer-asset-copy">
+                    <strong>قرارداد نهایی معامله</strong>
+                    <span>{{ downloadingContract ? 'در حال آماده‌سازی فایل PDF...' : 'دانلود نسخه PDF قرارداد برای مرور نهایی' }}</span>
+                  </span>
+                  <span class="deal-transfer-asset-meta">
+                    <i class="fa-solid fa-download"></i>
+                  </span>
+                </button>
+
+                <a
+                  v-for="file in transferAttachments"
+                  :key="file.fileId"
+                  class="deal-transfer-file deal-transfer-asset"
+                  :href="file.downloadUrl || file.url"
+                  download
+                  rel="noreferrer"
+                >
+                  <span class="deal-transfer-asset-icon attachment">
+                    <i class="fa-solid fa-paperclip"></i>
+                  </span>
+                  <span class="deal-transfer-asset-copy">
+                    <strong>{{ file.title || file.fileName }}</strong>
+                    <span>{{ file.fileName || 'فایل پیوست انتقال' }}</span>
+                  </span>
+                  <span class="deal-transfer-asset-meta">{{ formatNumber(Math.round((file.size || 0) / 1024)) }} کیلوبایت</span>
+                </a>
+              </div>
+
+              <div v-if="deal.canCustomerRequestAdminReview" class="deal-admin-review-request mt-3">
+                <div class="deal-card-head compact">
+                  <div>
+                    <h3>گزارش به مدیریت</h3>
+                    <p>اگر در قرارداد، توضیحات انتقال یا پیوست‌ها مغایرتی می‌بینید، دلیل خود را ثبت کنید تا پرونده به بررسی مدیریت برود.</p>
+                  </div>
+                </div>
+
+                <label class="form-label">علت گزارش <span class="text-danger">*</span></label>
+                <textarea
+                  v-model="adminReviewReason"
+                  class="form-control"
+                  rows="4"
+                  required
+                  placeholder="دلیل خود را دقیق بنویسید؛ این متن برای ادمین، کارگزار و خود شما قابل مشاهده خواهد بود"
+                ></textarea>
+
+                <div class="deal-action-row mt-3 deal-review-actions">
+                  <button class="customer-secondary-btn" :disabled="requestingAdminReview" @click="handleRequestAdminReview">
+                    {{ requestingAdminReview ? 'در حال ثبت...' : 'ارسال برای بررسی مدیریت' }}
+                  </button>
+                  <span class="deal-inline-hint">پس از ثبت، اقدام بعدی روی پرونده تا پایان بررسی متوقف می‌شود.</span>
+                </div>
+              </div>
+
+              <div v-if="deal.canCustomerConfirmTransfer" class="deal-action-row mt-3">
+                <button class="customer-primary-btn" @click="handleTransferConfirmation">تایید {{ transferStageTitle }}</button>
+              </div>
+
+              <div v-else-if="deal.adminReviewMode" class="deal-validation-note mt-3">
+                این پرونده در حال بررسی مدیریت است و دکمه تایید نهایی تا پایان این بررسی غیرفعال شده است.
+              </div>
+
+              <div class="deal-validation-note">اگر در اطلاعات ثبت‌شده مغایرتی می‌بینید، پیش از تایید نهایی از بخش پشتیبانی پیگیری کنید.</div>
+            </section>
+
+            <section v-if="deal && activeStageTab === 'verify_broker'" class="deal-card">
               <div class="deal-card-head">
                 <div>
                   <h3>{{ selectedStageMeta?.title || 'وضعیت مرحله' }}</h3>
@@ -1106,973 +1555,169 @@ onMounted(load);
                 اقدام بعدی با: {{ deal.actByLabel || '-' }}
               </div>
             </section>
-          </div>
 
-          <aside class="deal-side-column">
-            <section v-if="displayValidation?.result" class="deal-card deal-side-card">
-              <div class="deal-card-head compact">
+            <section v-if="deal && activeStageTab === 'finished'" class="deal-card deal-finished-card">
+              <div class="deal-card-head">
                 <div>
-                  <h3>یادداشت اعتبارسنجی</h3>
-                  <p>متن نتیجه ذخیره‌شده اعتبارسنجی برای مرور سریع در کنار صفحه آمده است.</p>
+                  <h3><i class="fa-solid fa-circle-check text-success me-2"></i>معامله نهایی شد</h3>
+                  <p>تمامی مراحل پرونده با موفقیت طی شده و معامله بسته شده است. خلاصه اطلاعات و اسناد را در ادامه مشاهده کنید.</p>
                 </div>
               </div>
 
-              <div class="deal-validation-note">{{ displayValidation.result }}</div>
+              <div class="deal-summary-grid compact-grid">
+                <article class="deal-summary-card">
+                  <span>کد معامله</span>
+                  <strong>{{ deal.dealCode || '-' }}</strong>
+                </article>
+                <article class="deal-summary-card">
+                  <span>عنوان وام</span>
+                  <strong>{{ deal.facility?.title || '-' }}</strong>
+                </article>
+                <article class="deal-summary-card">
+                  <span>مبلغ</span>
+                  <strong>{{ formatMoney(deal.amount || 0) }}</strong>
+                </article>
+                <article class="deal-summary-card">
+                  <span>اقساط</span>
+                  <strong>{{ formatNumber(deal.installments || 0) }} ماه</strong>
+                </article>
+                <article class="deal-summary-card">
+                  <span>نرخ سود</span>
+                  <strong>{{ formatNumber(deal.profit || 0) }} درصد</strong>
+                </article>
+                <article class="deal-summary-card">
+                  <span>وضعیت</span>
+                  <strong>{{ deal.statusLabel || 'انجام شده' }}</strong>
+                </article>
+              </div>
+
+              <div v-if="deal.contractData || transferAttachments.length" class="deal-finished-files">
+                <h4>اسناد معامله</h4>
+                <div class="deal-transfer-files deal-transfer-files-stack">
+                  <button v-if="deal.contractData" type="button" class="deal-transfer-file deal-transfer-asset contract-download-btn" :disabled="downloadingContract" @click="downloadContractPdf">
+                    <span class="deal-transfer-asset-icon contract">
+                      <i class="fa-solid fa-file-contract"></i>
+                    </span>
+                    <span class="deal-transfer-asset-copy">
+                      <strong>قرارداد نهایی معامله</strong>
+                      <span>{{ downloadingContract ? 'در حال آماده‌سازی فایل PDF...' : 'دانلود نسخه PDF قرارداد' }}</span>
+                    </span>
+                    <span class="deal-transfer-asset-meta">
+                      <i class="fa-solid fa-download"></i>
+                    </span>
+                  </button>
+
+                  <a
+                    v-for="file in transferAttachments"
+                    :key="file.fileId"
+                    class="deal-transfer-file deal-transfer-asset"
+                    :href="file.downloadUrl || file.url"
+                    download
+                    rel="noreferrer"
+                  >
+                    <span class="deal-transfer-asset-icon attachment">
+                      <i class="fa-solid fa-paperclip"></i>
+                    </span>
+                    <span class="deal-transfer-asset-copy">
+                      <strong>{{ file.title || file.fileName }}</strong>
+                      <span>{{ file.fileName || 'فایل پیوست' }}</span>
+                    </span>
+                    <span class="deal-transfer-asset-meta">{{ formatNumber(Math.round((file.size || 0) / 1024)) }} KB</span>
+                  </a>
+                </div>
+              </div>
+
+              <div v-if="deal.transferData?.description" class="deal-validation-note">
+                <strong>توضیحات انتقال:</strong> {{ deal.transferData.description }}
+              </div>
+
+              <div v-if="deal.canRate" class="deal-rating-section">
+                <h4><i class="fa-solid fa-star me-1"></i>امتیازدهی به کارگزار</h4>
+                <p class="deal-rating-desc">عملکرد کارگزار خود را در این معامله ارزیابی کنید. امتیاز شما تنها یک بار قابل ثبت است.</p>
+                <div class="deal-rating-stars">
+                  <button
+                    v-for="star in 5"
+                    :key="star"
+                    type="button"
+                    class="deal-rating-star"
+                    :class="{ active: star <= (ratingHover || ratingScore), hovered: ratingHover && star <= ratingHover }"
+                    @mouseenter="ratingHover = star"
+                    @mouseleave="ratingHover = 0"
+                    @click="ratingScore = star"
+                  >
+                    <i :class="star <= (ratingHover || ratingScore) ? 'fa-solid fa-star' : 'fa-regular fa-star'"></i>
+                  </button>
+                  <span v-if="ratingScore" class="deal-rating-value">{{ ratingScore }} از ۵</span>
+                </div>
+                <textarea
+                  v-model="ratingComment"
+                  class="form-control mt-2"
+                  rows="2"
+                  maxlength="1000"
+                  placeholder="نظر شما (اختیاری)"
+                ></textarea>
+                <button
+                  type="button"
+                  class="btn btn-success mt-2"
+                  :disabled="!ratingScore || submittingRating"
+                  @click="handleSubmitRating"
+                >
+                  {{ submittingRating ? 'در حال ثبت...' : 'ثبت امتیاز' }}
+                </button>
+              </div>
+              <div v-else-if="deal.hasRated" class="deal-rating-done">
+                <i class="fa-solid fa-circle-check text-success me-1"></i>
+                <span>امتیاز شما قبلاً ثبت شده است. با تشکر از مشارکت شما.</span>
+              </div>
             </section>
-          </aside>
+          </div>
         </div>
       </div>
     </CustomerPanelShell>
+
+    <Teleport to="body">
+      <Transition name="route-float">
+        <div v-if="transferOtpOpen" class="transfer-otp-overlay" @click.self="transferOtpOpen = false">
+          <div class="transfer-otp-modal">
+            <div class="transfer-otp-head">
+              <div>
+                <span class="transfer-otp-kicker">تایید OTP</span>
+                <h4>کد تایید {{ transferStageTitle }} را وارد کنید</h4>
+                <p>کد ۴ رقمی پیامک شده را وارد کنید. ارسال مجدد هر ۲ دقیقه فعال می‌شود.</p>
+              </div>
+              <button type="button" class="transfer-otp-close" @click="transferOtpOpen = false">×</button>
+            </div>
+
+            <label class="transfer-otp-label">کد تایید</label>
+            <OtpCodeInput
+              v-model="transferOtpCode"
+              :disabled="transferOtpBusy"
+              :auto-focus="transferOtpOpen"
+              @complete="submitTransferOtp"
+            />
+
+            <div class="transfer-otp-actions">
+              <button type="button" class="customer-secondary-btn" :disabled="transferOtpBusy || transferOtpResendIn > 0" @click="requestTransferOtp">
+                {{ transferOtpResendIn > 0 ? `ارسال مجدد تا ${transferOtpResendIn} ثانیه` : 'ارسال مجدد کد' }}
+              </button>
+              <button type="button" class="customer-primary-btn" :disabled="transferOtpBusy" @click="submitTransferOtp">
+                {{ transferOtpBusy ? 'در حال ثبت...' : 'تایید و نهایی‌سازی' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <DealChatModal
+      v-if="chatOpen && deal?.id"
+      :deal-id="deal.id"
+      current-sender-type="customer"
+      :get-messages="getDealMessages"
+      :send-message="sendDealMessage"
+      @close="chatOpen = false"
+    />
   </section>
 </template>
 
-<style scoped>
-.customer-deal-start-view {
-  display: grid;
-  gap: 18px;
-}
-
-.customer-loading-card {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  padding: 48px 28px;
-  border-radius: 30px;
-  background: var(--web-surface);
-  border: 1px solid var(--web-border);
-  color: var(--web-muted);
-  font-weight: 700;
-}
-
-.customer-spinner {
-  width: 28px;
-  height: 28px;
-  border: 3px solid var(--web-border);
-  border-top-color: var(--web-primary);
-  border-radius: 50%;
-  animation: dealStartSpin 0.7s linear infinite;
-}
-
-@keyframes dealStartSpin {
-  to { transform: rotate(360deg); }
-}
-
-.deal-feedback {
-  margin: 0;
-  display: grid;
-  gap: 12px;
-  padding: 16px 18px;
-  border: 1px solid transparent;
-  border-radius: 22px;
-}
-
-.deal-feedback.success {
-  border-color: rgba(34, 160, 107, 0.18);
-  background: rgba(34, 160, 107, 0.12);
-  color: #15803d;
-}
-
-.deal-feedback.error {
-  border-color: rgba(239, 68, 68, 0.2);
-  background: rgba(239, 68, 68, 0.12);
-  color: #b91c1c;
-}
-
-.deal-feedback-headline {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.deal-feedback-headline i {
-  margin-top: 2px;
-  font-size: 18px;
-}
-
-.deal-feedback-headline strong {
-  display: block;
-  font-size: 14px;
-  font-weight: 900;
-}
-
-.deal-feedback-headline p {
-  margin: 6px 0 0;
-  font-size: 12px;
-  opacity: 0.9;
-}
-
-.deal-feedback-list {
-  margin: 0;
-  padding: 0 18px 0 0;
-  display: grid;
-  gap: 8px;
-  font-size: 12px;
-  line-height: 1.9;
-}
-
-.deal-page-stack {
-  display: grid;
-  gap: 18px;
-}
-
-.deal-card {
-  display: grid;
-  gap: 18px;
-  padding: 22px;
-  border-radius: 28px;
-  border: 1px solid var(--web-border);
-  background:
-    radial-gradient(circle at top right, rgba(193, 18, 18, 0.08), transparent 34%),
-    linear-gradient(180deg, color-mix(in srgb, var(--web-surface) 95%, #fff 5%) 0%, var(--web-surface-soft) 100%);
-  box-shadow: var(--web-shadow);
-}
-
-.deal-card-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 14px;
-}
-
-.deal-card-head.compact {
-  gap: 10px;
-}
-
-.deal-card-head h3,
-.deal-hero-head h2,
-.deal-success-card h3 {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 900;
-}
-
-.deal-card-head p,
-.deal-hero-head p,
-.deal-success-card p,
-.deal-document-item p,
-.result-history-item p {
-  margin: 6px 0 0;
-  color: var(--web-muted);
-  font-size: 12px;
-  line-height: 1.85;
-}
-
-.deal-kicker {
-  display: inline-flex;
-  align-items: center;
-  min-height: 30px;
-  padding: 0 12px;
-  margin-bottom: 12px;
-  border-radius: 999px;
-  background: rgba(193, 18, 18, 0.1);
-  color: var(--web-primary);
-  font-size: 11px;
-  font-weight: 900;
-}
-
-.deal-hero-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.85fr);
-  gap: 20px;
-  align-items: start;
-}
-
-.deal-hero-main {
-  display: grid;
-  gap: 18px;
-}
-
-.deal-hero-head {
-  align-items: flex-start;
-}
-
-.deal-hero-tools {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.deal-status-chip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 36px;
-  padding: 0 14px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 900;
-  white-space: nowrap;
-}
-
-.deal-status-chip.status-in_progress {
-  background: rgba(249, 115, 22, 0.12);
-  color: #c2410c;
-}
-
-.deal-status-chip.status-failed {
-  background: rgba(239, 68, 68, 0.12);
-  color: #b91c1c;
-}
-
-.deal-status-chip.status-suspended {
-  background: rgba(245, 158, 11, 0.14);
-  color: #b45309;
-}
-
-.deal-status-chip.status-done {
-  background: rgba(34, 160, 107, 0.12);
-  color: #15803d;
-}
-
-.deal-metric-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 14px;
-}
-
-.deal-hero-facts-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 14px;
-}
-
-.deal-metric-card,
-.deal-summary-card,
-.deal-side-fact {
-  display: grid;
-  gap: 8px;
-  padding: 16px;
-  border-radius: 20px;
-  border: 1px solid var(--web-border);
-  background: color-mix(in srgb, var(--web-surface) 78%, transparent);
-}
-
-.deal-summary-card-hero {
-  min-height: 100%;
-}
-
-.deal-metric-label,
-.deal-summary-card span,
-.deal-side-fact span,
-.deal-summary-row span,
-.deal-progress-kicker,
-.deal-step-phase {
-  color: var(--web-muted);
-  font-size: 11px;
-  font-weight: 800;
-}
-
-.deal-metric-value,
-.deal-summary-card strong,
-.deal-side-fact strong,
-.deal-summary-row strong {
-  font-size: 15px;
-  font-weight: 900;
-  line-height: 1.7;
-}
-
-.deal-inline-warning {
-  padding: 14px 16px;
-  border-radius: 18px;
-  border: 1px solid rgba(245, 158, 11, 0.28);
-  background: rgba(245, 158, 11, 0.12);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.deal-action-row,
-.deal-success-actions {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.deal-hero-side {
-  display: grid;
-  gap: 14px;
-}
-
-.deal-progress-shell {
-  display: grid;
-  gap: 10px;
-  padding: 18px;
-  border-radius: 24px;
-  border: 1px solid rgba(193, 18, 18, 0.16);
-  background: linear-gradient(180deg, rgba(193, 18, 18, 0.1), rgba(193, 18, 18, 0.04));
-}
-
-.deal-progress-shell > strong {
-  font-size: 38px;
-  line-height: 1;
-  font-weight: 900;
-  color: var(--web-primary);
-}
-
-.deal-progress-shell > p {
-  margin: 0;
-  color: var(--web-muted);
-  font-size: 12px;
-  line-height: 1.9;
-}
-
-.deal-progress-track {
-  position: relative;
-  height: 8px;
-  border-radius: 999px;
-  background: rgba(148, 163, 184, 0.14);
-  overflow: hidden;
-}
-
-.deal-progress-track span {
-  position: absolute;
-  inset: 0 auto 0 0;
-  border-radius: inherit;
-  background: linear-gradient(90deg, var(--web-primary) 0%, #ea580c 100%);
-}
-
-.deal-side-facts {
-  display: grid;
-  gap: 14px;
-}
-
-.result-history-dropup {
-  position: relative;
-}
-
-.result-history-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 42px;
-  padding: 0 16px;
-  border-radius: 16px;
-  border: 1px solid var(--web-border-strong);
-  background: color-mix(in srgb, var(--web-surface) 82%, transparent);
-  color: var(--web-text);
-  font-size: 12px;
-  font-weight: 900;
-}
-
-.result-history-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--web-primary);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 900;
-}
-
-.result-history-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.result-history-panel {
-  position: absolute;
-  inset: calc(100% + 12px) 0 auto auto;
-  width: min(420px, calc(100vw - 48px));
-  max-height: 360px;
-  overflow: auto;
-  display: grid;
-  gap: 10px;
-  padding: 14px;
-  border-radius: 22px;
-  border: 1px solid var(--web-border);
-  background: linear-gradient(180deg, var(--web-surface) 0%, var(--web-surface-soft) 100%);
-  box-shadow: var(--web-shadow);
-  z-index: 6;
-}
-
-.result-history-item {
-  display: grid;
-  gap: 8px;
-  padding: 14px;
-  border-radius: 18px;
-  border: 1px solid var(--web-border);
-  background: color-mix(in srgb, var(--web-surface) 74%, transparent);
-}
-
-.result-history-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.result-history-head strong,
-.result-history-head span,
-.result-history-item small {
-  font-size: 11px;
-}
-
-.result-history-head strong {
-  font-weight: 900;
-}
-
-.result-history-head span,
-.result-history-item small {
-  color: var(--web-muted);
-}
-
-.dropup-fade-enter-active,
-.dropup-fade-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
-}
-
-.dropup-fade-enter-from,
-.dropup-fade-leave-to {
-  opacity: 0;
-  transform: translateY(-10px);
-}
-
-.customer-primary-btn,
-.customer-secondary-btn,
-.customer-hero-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 44px;
-  padding: 0 18px;
-  border-radius: 16px;
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.customer-primary-btn {
-  border: 1px solid var(--web-primary);
-  background: linear-gradient(135deg, var(--web-primary) 0%, #c11212 100%);
-  color: #fff;
-}
-
-.customer-secondary-btn,
-.customer-hero-link.muted {
-  border: 1px solid var(--web-border-strong);
-  background: color-mix(in srgb, var(--web-surface) 82%, transparent);
-  color: var(--web-text);
-}
-
-.deal-content-grid {
-  /* display: grid; 
-  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.8fr); */
-  gap: 18px;
-  align-items: start;
-}
-
-.deal-main-column,
-.deal-side-column {
-  display: grid;
-  gap: 18px;
-}
-
-.deal-progress-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 38px;
-  padding: 0 14px;
-  border-radius: 999px;
-  background: rgba(193, 18, 18, 0.1);
-  color: var(--web-primary);
-  font-size: 12px;
-  font-weight: 900;
-  white-space: nowrap;
-}
-
-.deal-stepper {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 0;
-  overflow: visible;
-  padding-bottom: 0;
-  align-items: flex-start;
-}
-
-.deal-step {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 0;
-  border: none;
-  background: transparent;
-  border-radius: 0;
-  min-height: auto;
-  min-width: 0;
-  flex: 1;
-  position: relative;
-  cursor: pointer;
-  transition: transform 0.2s ease;
-}
-
-.deal-step:active {
-  transform: scale(0.96);
-}
-
-.deal-step::before {
-  content: '';
-  position: absolute;
-  top: 16px;
-  left: calc(50% + 18px);
-  right: -50%;
-  height: 3px;
-  border-radius: 2px;
-  background: rgba(148, 163, 184, 0.24);
-  z-index: 0;
-  transition: background 0.35s ease;
-}
-
-.deal-step:first-child::before {
-  display: none;
-}
-
-.deal-step.state-done::before,
-.deal-step.state-completed::before {
-  background: rgba(34, 197, 94, 0.45);
-}
-
-.deal-step.state-current::before {
-  background: rgba(11, 95, 131, 0.35);
-}
-
-.deal-step-index {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: 900;
-  position: relative;
-  z-index: 1;
-  border: 2.5px solid rgba(148, 163, 184, 0.25);
-  background: var(--web-surface, #fff);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-}
-
-.deal-step.state-done .deal-step-index {
-  background: linear-gradient(135deg, rgba(34, 160, 107, 0.15), rgba(34, 160, 107, 0.06));
-  border-color: rgba(34, 160, 107, 0.55);
-  color: #15803d;
-}
-
-.deal-step.state-current .deal-step-index {
-  background: linear-gradient(135deg, rgba(193, 18, 18, 0.12), rgba(193, 18, 18, 0.04));
-  border-color: rgba(193, 18, 18, 0.55);
-  color: var(--web-primary);
-}
-
-.deal-step.state-failed .deal-step-index {
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(239, 68, 68, 0.04));
-  border-color: rgba(239, 68, 68, 0.55);
-  color: #b91c1c;
-}
-
-.deal-step.state-paused .deal-step-index {
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(245, 158, 11, 0.04));
-  border-color: rgba(245, 158, 11, 0.55);
-  color: #b45309;
-}
-
-.deal-step.active .deal-step-index {
-  box-shadow: 0 0 0 4px rgba(193, 18, 18, 0.12), 0 2px 12px rgba(193, 18, 18, 0.15);
-  transform: scale(1.1);
-}
-
-.deal-step strong {
-  font-size: 11px;
-  font-weight: 800;
-  text-align: center;
-  line-height: 1.4;
-  max-width: 80px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--web-muted);
-  transition: color 0.2s ease;
-}
-
-.deal-step.active strong {
-  color: var(--web-primary);
-}
-
-.deal-step.state-done strong {
-  color: #15803d;
-}
-
-.deal-checklist li,
-.deal-validation-note,
-.document-text {
-  margin: 0;
-  color: var(--web-muted);
-  font-size: 12px;
-  line-height: 1.9;
-}
-
-.deal-stage-spotlight {
-  margin-top: 16px;
-  padding: 16px;
-  border-radius: 18px;
-  border: 1px solid var(--web-border);
-  background: color-mix(in srgb, var(--web-surface) 78%, transparent);
-}
-
-.deal-stage-spotlight strong {
-  display: block;
-  font-size: 14px;
-  font-weight: 900;
-}
-
-.deal-stage-spotlight p {
-  margin: 8px 0 0;
-  color: var(--web-muted);
-  font-size: 12px;
-  line-height: 1.9;
-}
-
-.deal-summary-grid,
-.deal-validation-grid,
-.deal-documents-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.deal-summary-list {
-  display: grid;
-  gap: 10px;
-}
-
-.deal-summary-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 16px;
-  border-radius: 18px;
-  border: 1px solid var(--web-border);
-  background: color-mix(in srgb, var(--web-surface) 78%, transparent);
-}
-
-.deal-validation-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 14px;
-}
-
-.deal-validation-note {
-  padding: 14px 16px;
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--web-surface) 78%, transparent);
-  border: 1px solid var(--web-border);
-}
-
-.deal-document-item {
-  display: grid;
-  gap: 12px;
-  padding: 16px;
-  border-radius: 20px;
-  border: 1px solid var(--web-border);
-  background: color-mix(in srgb, var(--web-surface) 74%, transparent);
-}
-
-.deal-document-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.deal-document-head strong {
-  font-size: 14px;
-  font-weight: 900;
-}
-
-.deal-document-type-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 8px;
-}
-
-.document-type-chip {
-  display: inline-flex;
-  align-items: center;
-  min-height: 26px;
-  padding: 0 10px;
-  border-radius: 999px;
-  background: rgba(148, 163, 184, 0.14);
-  color: var(--web-text);
-  font-size: 10px;
-  font-weight: 900;
-}
-
-.required-chip {
-  display: inline-flex;
-  align-items: center;
-  min-height: 28px;
-  padding: 0 10px;
-  border-radius: 999px;
-  background: rgba(239, 68, 68, 0.12);
-  color: #b91c1c;
-  font-size: 10px;
-  font-weight: 900;
-}
-
-.document-limit-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.document-limit-list span {
-  display: inline-flex;
-  align-items: center;
-  min-height: 28px;
-  padding: 0 10px;
-  border-radius: 999px;
-  background: rgba(148, 163, 184, 0.1);
-  color: var(--web-muted);
-  font-size: 10px;
-  font-weight: 800;
-}
-
-.upload-field-shell {
-  display: grid;
-  gap: 10px;
-}
-
-.upload-field-main {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px;
-  border-radius: 18px;
-  border: 1px dashed var(--web-border-strong);
-  background: color-mix(in srgb, var(--web-surface) 82%, transparent);
-}
-
-.upload-field-copy {
-  display: grid;
-  gap: 4px;
-}
-
-.upload-field-kicker {
-  color: var(--web-muted);
-  font-size: 10px;
-  font-weight: 900;
-}
-
-.upload-field-copy strong {
-  font-size: 12px;
-  font-weight: 900;
-  word-break: break-word;
-}
-
-.upload-field-copy span {
-  color: var(--web-muted);
-  font-size: 11px;
-}
-
-.uploaded-file-row a,
-.upload-field-button,
-.upload-field-clear,
-.customer-inline-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 38px;
-  padding: 0 14px;
-  border-radius: 14px;
-  font-size: 11px;
-  font-weight: 800;
-}
-
-.upload-field-button,
-.customer-inline-link {
-  background: rgba(211, 90, 90, 0.1);
-  color: var(--web-primary);
-}
-
-.upload-field-button {
-  gap: 8px;
-}
-
-.upload-field-clear {
-  border: 1px solid var(--web-border);
-  background: transparent;
-  color: var(--web-muted);
-}
-
-.document-file-input {
-  display: none;
-}
-
-.uploaded-file-row a {
-  color: var(--web-primary);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.deal-input {
-  min-height: 48px;
-  border-radius: 16px;
-}
-
-.deal-readonly-value {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.deal-empty-chip {
-  display: inline-flex;
-  align-items: center;
-  min-height: 34px;
-  padding: 0 12px;
-  border-radius: 999px;
-  background: rgba(148, 163, 184, 0.12);
-  color: var(--web-muted);
-  font-size: 11px;
-  font-weight: 800;
-}
-
-.deal-checklist {
-  margin: 0;
-  padding: 0 18px 0 0;
-  display: grid;
-  gap: 10px;
-}
-
-.deal-success-card {
-  text-align: center;
-}
-
-.deal-success-icon {
-  width: 72px;
-  height: 72px;
-  margin: 0 auto 16px;
-  border-radius: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(34, 160, 107, 0.12);
-  color: #15803d;
-  font-size: 30px;
-}
-
-[data-theme='dark'] .deal-selection-box,
-[data-theme='dark'] .deal-card,
-[data-theme='dark'] .deal-metric-card,
-[data-theme='dark'] .deal-summary-card,
-[data-theme='dark'] .deal-side-fact,
-[data-theme='dark'] .deal-summary-row,
-[data-theme='dark'] .deal-validation-note,
-[data-theme='dark'] .deal-document-item,
-[data-theme='dark'] .upload-field-main,
-[data-theme='dark'] .result-history-item,
-[data-theme='dark'] .customer-secondary-btn,
-[data-theme='dark'] .customer-hero-link.muted {
-  background: var(--web-surface-soft);
-}
-
-[data-theme='dark'] .deal-progress-shell {
-  background: linear-gradient(180deg, rgba(255, 106, 99, 0.18), rgba(255, 106, 99, 0.06));
-}
-
-.link-btn {
-  text-decoration: none;
-}
-
-@media (max-width: 1180px) {
-  .deal-hero-card,
-  .deal-content-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 991px) {
-  .deal-summary-grid,
-  .deal-documents-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .deal-card-head,
-  .deal-hero-head,
-  .deal-hero-tools,
-  .deal-summary-row,
-  .upload-field-main,
-  .deal-inline-warning {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .deal-hero-tools,
-  .result-history-dropup,
-  .result-history-button {
-    width: 100%;
-  }
-
-  .result-history-panel {
-    inset: calc(100% + 12px) 0 auto 0;
-    width: 100%;
-  }
-
-  .deal-progress-shell > strong {
-    font-size: 32px;
-  }
-
-  .deal-step strong {
-    font-size: 9px;
-    max-width: 56px;
-  }
-}
-
-@media (max-width: 640px) {
-  .deal-card {
-    padding: 18px;
-    border-radius: 22px;
-  }
-
-  .customer-loading-card {
-    padding: 34px 18px;
-  }
-
-  .deal-feedback {
-    padding: 14px 16px;
-  }
-
-  .customer-primary-btn,
-  .customer-secondary-btn,
-  .customer-hero-link,
-  .upload-field-button,
-  .upload-field-clear,
-  .customer-inline-link {
-    width: 100%;
-  }
-
-  .deal-action-row {
-    display: grid;
-  }
-
-  .deal-readonly-value {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-}
-</style>
+<style scoped src="./styles/CustomerDealStartView.css"></style>

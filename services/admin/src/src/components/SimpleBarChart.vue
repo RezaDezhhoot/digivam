@@ -78,21 +78,4 @@ onBeforeUnmount(() => { if (chartInstance) chartInstance.destroy(); });
   </div>
 </template>
 
-<style scoped>
-.chart-shell {
-  overflow-x: auto;
-  position: relative;
-}
-
-.chart-empty {
-  min-height: 180px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  color: var(--admin-muted);
-  background: var(--admin-surface-soft);
-  border: 1px dashed var(--admin-border);
-  border-radius: 16px;
-}
-</style>
+<style scoped src="./styles/SimpleBarChart.css"></style>

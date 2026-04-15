@@ -1,13 +1,12 @@
 const BACKEND_BASE = import.meta.env.VITE_BACKEND_BASE_URL || 'http://localhost:3000';
 const API_BASE = import.meta.env.VITE_API_BASE_URL || `${BACKEND_BASE}/api`;
-import { emitMaintenanceEvent, emitServiceUnavailableEvent } from './customer-auth.api.js';
+import { emitMaintenanceEvent } from './customer-auth.api.js';
 
 const fetchJson = async (url, options = {}) => {
   let response;
   try {
     response = await fetch(url, options);
   } catch (error) {
-    emitServiceUnavailableEvent({ panel: 'web' });
     throw error;
   }
 
@@ -19,8 +18,6 @@ const fetchJson = async (url, options = {}) => {
     error.data = data;
     if (response.status === 503) {
       emitMaintenanceEvent({ panel: data.panel, message: error.message });
-    } else if (response.status >= 500) {
-      emitServiceUnavailableEvent({ panel: data.panel || 'web', message: error.message });
     }
     throw error;
   }
@@ -48,6 +45,9 @@ const optionalAuthHeader = () => {
 export const getWebHomeData = (filters = {}) =>
   fetchJson(`${API_BASE}/web/home${buildQuery(filters)}`);
 
+export const getWebSiteConfig = () =>
+  fetchJson(`${API_BASE}/web/site-config`);
+
 export const getWebFacilities = (params = {}) =>
   fetchJson(`${API_BASE}/web/facilities${buildQuery(params)}`);
 
@@ -55,3 +55,12 @@ export const getWebFacilityBySlug = (slug) =>
   fetchJson(`${API_BASE}/web/facilities/${encodeURIComponent(slug)}`, {
     headers: { ...optionalAuthHeader() }
   });
+
+export const getWebTutorials = () =>
+  fetchJson(`${API_BASE}/web/tutorials`);
+
+export const getAboutUs = () =>
+  fetchJson(`${API_BASE}/web/about-us`);
+
+export const getLicenses = () =>
+  fetchJson(`${API_BASE}/web/licenses`);

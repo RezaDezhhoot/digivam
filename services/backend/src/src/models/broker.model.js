@@ -64,6 +64,17 @@ export const Broker = sequelize.define(
       type: DataTypes.STRING,
       allowNull: true
     },
+    isSuspended: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      field: 'is_suspended'
+    },
+    suspendReason: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      field: 'suspend_reason'
+    },
     rememberToken: {
       type: DataTypes.STRING(100),
       allowNull: true,

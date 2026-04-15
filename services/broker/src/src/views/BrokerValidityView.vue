@@ -3,7 +3,9 @@ import { onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   createBrokerWalletCharge,
+  createBrokerWithdrawal,
   getBrokerWalletOverview,
+  getBrokerWithdrawals,
   verifyBrokerWalletCharge
 } from '../services/broker-wallet.api.js';
 import { useAppToast } from '../composables/useToast.js';
@@ -15,14 +17,48 @@ const router = useRouter();
 const loading = ref(true);
 const verifying = ref(false);
 const submitLoading = ref(false);
+const exportLoading = ref(false);
 const wallet = ref(null);
 const transactions = ref([]);
 const quickAmounts = ref([500000, 1000000, 5000000, 10000000]);
 const amount = ref(500000);
+const withdrawAmount = ref('');
+const withdrawLoading = ref(false);
+const withdrawals = ref([]);
+const withdrawalsLoading = ref(false);
 
 const formatMoney = (value) => `${new Intl.NumberFormat('fa-IR').format(Number(value || 0))} تومان`;
 const formatDate = (value) => (value ? new Date(value).toLocaleString('fa-IR') : '-');
 const typeClass = (type) => (type === 'deposit' ? 'text-success' : 'text-danger');
+
+const exportTransactionsToExcel = async () => {
+  if (!transactions.value.length) {
+    toast.warning('تراکنشی برای خروجی اکسل وجود ندارد');
+    return;
+  }
+
+  exportLoading.value = true;
+  try {
+    const XLSX = await import('xlsx');
+    const rows = transactions.value.map((item, index) => ({
+      'ردیف': index + 1,
+      'نوع تراکنش': item.typeLabel || item.type || '-',
+      'نوع فنی': item.type || '-',
+      'مبلغ': Number(item.amount || 0),
+      'وضعیت': item.confirmed ? 'تایید شده' : 'در انتظار تایید',
+      'تاریخ': formatDate(item.createdAt)
+    }));
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Wallet');
+    XLSX.writeFile(workbook, `broker-wallet-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast.success('خروجی اکسل اعتبارات آماده شد');
+  } catch (error) {
+    toast.error(error.message || 'ساخت خروجی اکسل با خطا مواجه شد');
+  } finally {
+    exportLoading.value = false;
+  }
+};
 
 const loadOverview = async ({ silent = false } = {}) => {
   if (!silent) {
@@ -60,6 +96,45 @@ const startPayment = async () => {
   }
 };
 
+const loadWithdrawals = async () => {
+  withdrawalsLoading.value = true;
+  try {
+    const data = await getBrokerWithdrawals();
+    withdrawals.value = data.items || [];
+  } catch (error) {
+    toast.error(error.message);
+  } finally {
+    withdrawalsLoading.value = false;
+  }
+};
+
+const submitWithdrawal = async () => {
+  const value = Number(withdrawAmount.value || 0);
+  if (!value || value <= 0) {
+    toast.warning('مبلغ برداشت را وارد کنید');
+    return;
+  }
+
+  withdrawLoading.value = true;
+  try {
+    const data = await createBrokerWithdrawal({ amount: value });
+    toast.success(data.message || 'درخواست برداشت ثبت شد');
+    wallet.value = data.wallet || wallet.value;
+    withdrawAmount.value = '';
+    await loadWithdrawals();
+  } catch (error) {
+    toast.error(error.message);
+  } finally {
+    withdrawLoading.value = false;
+  }
+};
+
+const withdrawalStatusClass = (status) => {
+  if (status === 'done') return 'text-success';
+  if (status === 'failed') return 'text-danger';
+  return 'text-warning';
+};
+
 const verifyReturn = async () => {
   const Authority = String(route.query.Authority || '').trim();
   const Status = String(route.query.Status || '').trim();
@@ -91,6 +166,7 @@ const verifyReturn = async () => {
 
 onMounted(async () => {
   await loadOverview();
+  await loadWithdrawals();
   await verifyReturn();
 });
 </script>
@@ -103,6 +179,11 @@ onMounted(async () => {
         <h1 class="page-header-title">اعتبارات</h1>
         <p class="page-header-desc">کیف پول خود را از طریق درگاه پرداخت شارژ کنید و تاریخچه تراکنش‌ها را ببینید.</p>
       </div>
+      <button class="btn btn-outline-secondary ms-auto" :disabled="exportLoading || loading" @click="exportTransactionsToExcel">
+        <i v-if="exportLoading" class="fa-solid fa-spinner fa-spin me-1"></i>
+        <i v-else class="fa-solid fa-file-excel me-1"></i>
+        خروجی اکسل
+      </button>
     </div>
 
     <div v-if="loading" class="content-card">
@@ -145,6 +226,7 @@ onMounted(async () => {
                   step="1000"
                   placeholder="مبلغ موردنظر را وارد کنید"
                 />
+                <small v-if="Number(amount)" class="text-muted d-block mt-1">{{ formatMoney(amount) }}</small>
               </div>
               <div class="col-12 col-lg-6 d-flex justify-content-lg-end">
                 <button class="btn btn-primary btn-lg pay-btn" :disabled="submitLoading || verifying" @click="startPayment">
@@ -175,6 +257,58 @@ onMounted(async () => {
         </div>
       </div>
 
+      <div class="content-card mb-3">
+        <div class="section-head mb-3">
+          <div>
+            <h2 class="card-section-title mb-1"><i class="fa-solid fa-money-bill-transfer me-1"></i>درخواست برداشت</h2>
+            <p class="section-subtitle mb-0">مبلغ موردنظر را وارد کنید. پس از ثبت درخواست مبلغ از کیف پول کسر و درخواست جهت بررسی ارسال می‌شود.</p>
+          </div>
+        </div>
+        <div class="row g-3 align-items-end">
+          <div class="col-12 col-lg-6">
+            <label class="form-label form-label-required">مبلغ برداشت (تومان)</label>
+            <input v-model="withdrawAmount" type="number" class="form-control" min="100000" step="1000" placeholder="حداقل ۱۰۰,۰۰۰ تومان" />
+            <small v-if="Number(withdrawAmount)" class="text-muted d-block mt-1">{{ formatMoney(withdrawAmount) }}</small>
+          </div>
+          <div class="col-12 col-lg-6">
+            <button class="btn btn-warning" :disabled="withdrawLoading" @click="submitWithdrawal">
+              <i v-if="withdrawLoading" class="fa-solid fa-spinner fa-spin me-1"></i>
+              <i v-else class="fa-solid fa-paper-plane me-1"></i>
+              ثبت درخواست برداشت
+            </button>
+          </div>
+        </div>
+
+        <div v-if="withdrawals.length" class="table-responsive mt-3">
+          <table class="table align-middle mb-0 history-table">
+            <thead>
+              <tr>
+                <th>مبلغ</th>
+                <th>وضعیت</th>
+                <th>پیام ادمین</th>
+                <th>فایل</th>
+                <th>تاریخ ثبت</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in withdrawals" :key="item.id">
+                <td>{{ formatMoney(item.amount) }}</td>
+                <td :class="withdrawalStatusClass(item.status)">{{ item.statusLabel }}</td>
+                <td>{{ item.adminMessage || '-' }}</td>
+                <td>
+                  <a v-if="item.adminFileUrl" :href="item.adminFileUrl" target="_blank" class="btn btn-sm btn-outline-secondary">
+                    <i class="fa-solid fa-paperclip me-1"></i>مشاهده
+                  </a>
+                  <span v-else>-</span>
+                </td>
+                <td>{{ formatDate(item.createdAt) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p v-else class="text-muted small mt-2 mb-0">هنوز درخواست برداشتی ثبت نشده است.</p>
+      </div>
+
       <div class="content-card">
         <div class="section-head mb-3">
           <div>
@@ -189,6 +323,7 @@ onMounted(async () => {
               <tr>
                 <th>#</th>
                 <th>نوع تراکنش</th>
+                <th>موضوع</th>
                 <th>مبلغ</th>
                 <th>وضعیت</th>
                 <th>تاریخ</th>
@@ -198,6 +333,7 @@ onMounted(async () => {
               <tr v-for="(item, index) in transactions" :key="item.id">
                 <td>{{ index + 1 }}</td>
                 <td :class="typeClass(item.type)">{{ item.typeLabel }}</td>
+                <td>{{ item.subjectLabel || '-' }}</td>
                 <td>{{ formatMoney(item.amount) }}</td>
                 <td>
                   <span class="status-pill" :class="item.confirmed ? 'status-answered' : 'status-pending'">
@@ -220,192 +356,4 @@ onMounted(async () => {
   </section>
 </template>
 
-<style scoped>
-.page-header {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  background: var(--surface-color);
-  border: 1px solid var(--panel-border);
-  border-radius: 14px;
-  padding: 18px 20px;
-  box-shadow: var(--panel-shadow);
-}
-
-.page-header-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  background: var(--chip-bg);
-  color: var(--brand-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  flex-shrink: 0;
-}
-
-.page-header-title {
-  font-size: 17px;
-  font-weight: 700;
-  margin: 0;
-}
-
-.page-header-desc {
-  font-size: 13px;
-  color: var(--muted-text);
-  margin: 2px 0 0;
-}
-
-.content-card,
-.summary-card {
-  background: var(--surface-color);
-  border: 1px solid var(--panel-border);
-  border-radius: 14px;
-  padding: 22px;
-  box-shadow: var(--panel-shadow);
-  position: relative;
-}
-
-.summary-card {
-  background: linear-gradient(160deg, rgba(219, 0, 0, 0.08), rgba(138, 0, 0, 0.02));
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-
-.summary-icon {
-  width: 58px;
-  height: 58px;
-  border-radius: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(219, 0, 0, 0.12);
-  color: var(--brand-primary);
-  font-size: 22px;
-  margin-bottom: 16px;
-}
-
-.summary-label {
-  font-size: 13px;
-  color: var(--muted-text);
-  margin-bottom: 6px;
-}
-
-.summary-value {
-  font-size: clamp(24px, 3vw, 32px);
-  font-weight: 800;
-  margin: 0 0 10px;
-}
-
-.summary-desc {
-  font-size: 13px;
-  color: var(--muted-text);
-  margin: 0;
-  line-height: 1.9;
-}
-
-.section-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.card-section-title {
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.section-subtitle {
-  color: var(--muted-text);
-  font-size: 13px;
-}
-
-.wallet-chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 8px 12px;
-  border-radius: 999px;
-  background: rgba(219, 0, 0, 0.08);
-  color: var(--brand-primary);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.pay-btn {
-  min-width: 220px;
-}
-
-.quick-amounts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.quick-amount-btn {
-  border: 1px solid var(--panel-border);
-  background: var(--surface-soft);
-  color: var(--brand-text);
-  border-radius: 999px;
-  padding: 10px 16px;
-  font-size: 13px;
-  font-weight: 700;
-  transition: all 0.2s ease;
-}
-
-.quick-amount-btn:hover,
-.quick-amount-btn.active {
-  border-color: var(--brand-primary);
-  background: rgba(219, 0, 0, 0.08);
-  color: var(--brand-primary);
-}
-
-.quick-note {
-  font-size: 13px;
-  color: var(--muted-text);
-  line-height: 1.9;
-}
-
-.history-table th {
-  font-size: 12px;
-  color: var(--muted-text);
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.history-table td {
-  white-space: nowrap;
-  vertical-align: middle;
-}
-
-.empty-state {
-  text-align: center;
-  padding: 42px 16px;
-  color: var(--muted-text);
-}
-
-.empty-state i {
-  display: block;
-  font-size: 38px;
-  opacity: 0.35;
-  margin-bottom: 12px;
-}
-
-.compact-empty {
-  padding-block: 48px;
-}
-
-@media (max-width: 767px) {
-  .content-card,
-  .summary-card {
-    padding: 18px;
-  }
-
-  .pay-btn {
-    width: 100%;
-  }
-}
-</style>
+<style scoped src="./styles/BrokerValidityView.css"></style>

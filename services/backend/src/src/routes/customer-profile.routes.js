@@ -7,7 +7,7 @@ import { upsertCustomerProfileValidator } from '../validators/customer-profile.v
 
 export const customerProfileRouter = Router();
 
-customerProfileRouter.use(requireAuth('customer'));
+customerProfileRouter.use(requireAuth('customer', { allowSuspended: true }));
 
 customerProfileRouter.get('/', getCustomerProfile);
 customerProfileRouter.put('/', upsertCustomerProfileValidator, validateRequest, updateCustomerProfile);

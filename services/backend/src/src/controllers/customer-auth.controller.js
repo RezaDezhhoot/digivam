@@ -2,7 +2,10 @@ import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env.js';
 import { Customer } from '../models/customer.model.js';
+import { Notification } from '../models/notification.model.js';
 import { Wallet } from '../models/wallet.model.js';
+import { createNotification } from '../services/notification.service.js';
+import { loadSettingsItems, serializeAdminSettings } from '../services/site-settings.service.js';
 import { ensureWallet } from '../services/wallet.service.js';
 import { sendOtpSms } from '../services/sms.service.js';
 import { ensureCustomerWithWallet, serializeCustomerProfile } from '../services/customer-profile.service.js';
@@ -99,6 +102,8 @@ export const verifyCustomerOtp = async (req, res, next) => {
       });
     }
 
+    const isFirstVerification = !customer.verifiedAt;
+
     const matchesInMemory = verifyOtp(phone, code);
     const matchesHash = customer.otpPassword === hashOtp(code);
 
@@ -114,6 +119,23 @@ export const verifyCustomerOtp = async (req, res, next) => {
     });
 
     const freshCustomer = await ensureCustomerWithWallet(customer.id);
+
+    if (isFirstVerification) {
+      const settings = serializeAdminSettings(await loadSettingsItems());
+      const welcomeMessage = String(settings.welcomeMessageCustomer || '').trim();
+
+      if (welcomeMessage) {
+        await createNotification({
+          category: Notification.CATEGORIES.INFO,
+          title: 'خوش آمدید',
+          body: welcomeMessage,
+          modelType: Notification.MODEL_TYPES.CUSTOMER,
+          modelId: freshCustomer.id,
+          senderType: Notification.MODEL_TYPES.CUSTOMER,
+          senderId: freshCustomer.id
+        }).catch(() => null);
+      }
+    }
 
     return res.status(200).json({
       message: freshCustomer?.profile ? 'ورود موفق' : 'احراز هویت انجام شد، لطفا ثبت نام را تکمیل کنید',

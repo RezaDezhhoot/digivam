@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
+import OtpCodeInput from './OtpCodeInput.vue';
 import { requestCustomerOtp, verifyCustomerOtp } from '../services/customer-auth.api.js';
 import { useCustomerSession } from '../composables/useCustomerSession.js';
 
@@ -121,6 +122,11 @@ const resendCode = async () => {
 };
 
 const submitOtp = async () => {
+  if (password.value.length !== 4) {
+    errorText.value = 'کد تایید باید ۴ رقم باشد';
+    return;
+  }
+
   busy.value = true;
   errorText.value = '';
   successText.value = '';
@@ -211,7 +217,7 @@ onBeforeUnmount(() => {
 
             <template v-else>
               <label class="customer-auth-label" for="customer-auth-code">کد تایید</label>
-              <input id="customer-auth-code" v-model="password" class="form-control customer-auth-input" dir="ltr" inputmode="numeric" maxlength="4" placeholder="1234" />
+              <OtpCodeInput v-model="password" :disabled="busy" :auto-focus="open && step === 'otp'" />
 
               <div class="customer-auth-actions">
                 <button type="button" class="customer-auth-secondary" :disabled="busy" @click="step = 'phone'">ویرایش شماره</button>
@@ -231,243 +237,4 @@ onBeforeUnmount(() => {
   </Teleport>
 </template>
 
-<style scoped>
-:global(.customer-auth-overlay) {
-  position: fixed;
-  inset: 0;
-  z-index: 220;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: rgba(8, 10, 14, 0.58);
-  backdrop-filter: blur(10px);
-}
-
-:global(.customer-auth-shell) {
-  position: relative;
-  width: min(100%, 560px);
-  border-radius: 34px;
-  border: 1px solid var(--web-border);
-  background:
-    radial-gradient(circle at top right, rgba(255, 106, 99, 0.14), transparent 30%),
-    var(--web-surface);
-  box-shadow: 0 28px 80px rgba(12, 16, 26, 0.28);
-  padding: 28px;
-}
-
-:global(.customer-auth-close) {
-  position: absolute;
-  top: 18px;
-  left: 18px;
-  width: 42px;
-  height: 42px;
-  border: 1px solid var(--web-border);
-  border-radius: 14px;
-  background: var(--web-surface);
-  color: var(--web-text);
-  font-size: 24px;
-  line-height: 1;
-}
-
-:global(.customer-auth-hero) h2 {
-  margin: 10px 0 10px;
-  font-size: 15px;
-  font-weight: 900;
-}
-
-:global(.customer-auth-hero) p {
-  margin: 0;
-  color: var(--web-muted);
-  line-height: 1.9;
-}
-
-:global(.customer-auth-kicker) {
-  display: inline-flex;
-  align-items: center;
-  min-height: 34px;
-  padding: 0 14px;
-  border-radius: 999px;
-  background: var(--web-primary-soft);
-  color: var(--web-primary);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-:global(.customer-auth-stepper) {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 24px;
-}
-
-:global(.customer-auth-step) {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--web-muted);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-:global(.customer-auth-step span) {
-  width: 32px;
-  height: 32px;
-  border-radius: 999px;
-  border: 1px solid var(--web-border);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--web-surface-soft);
-}
-
-:global(.customer-auth-step.active),
-:global(.customer-auth-step.done) {
-  color: var(--web-text);
-}
-
-:global(.customer-auth-step.active span),
-:global(.customer-auth-step.done span) {
-  background: var(--web-primary);
-  border-color: var(--web-primary);
-  color: #fff;
-}
-
-:global(.customer-auth-step-line) {
-  flex: 1;
-  height: 2px;
-  background: var(--web-border);
-}
-
-:global(.customer-auth-step-line.active) {
-  background: linear-gradient(90deg, var(--web-primary) 0%, var(--web-primary-dark) 100%);
-}
-
-:global(.customer-auth-message) {
-  margin: 18px 0 0;
-  padding: 12px 14px;
-  border-radius: 16px;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-:global(.customer-auth-message.error) {
-  background: rgba(220, 38, 38, 0.1);
-  color: #b91c1c;
-}
-
-:global(.customer-auth-message.success) {
-  background: rgba(22, 163, 74, 0.1);
-  color: #15803d;
-}
-
-:global(.customer-auth-retry) {
-  min-height: 42px;
-  border-radius: 14px;
-  border: 1px solid rgba(15, 118, 110, 0.16);
-  background: rgba(15, 118, 110, 0.08);
-  color: #0f766e;
-  font-size: 12px;
-  font-weight: 900;
-  padding: 0 14px;
-  margin-top: 12px;
-}
-
-:global(.customer-auth-form) {
-  display: grid;
-  gap: 14px;
-  margin-top: 20px;
-}
-
-:global(.customer-auth-label) {
-  font-size: 13px;
-  font-weight: 800;
-}
-
-:global(.customer-auth-input) {
-  min-height: 56px;
-  border-radius: 18px;
-  font-size: 18px;
-}
-
-:global(.customer-auth-actions) {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-:global(.customer-auth-primary),
-:global(.customer-auth-secondary) {
-  min-height: 50px;
-  border-radius: 18px;
-  font-size: 14px;
-  font-weight: 800;
-}
-
-:global(.customer-auth-primary) {
-  border: none;
-  background: linear-gradient(135deg, var(--web-primary) 0%, #c11212 100%);
-  color: #fff;
-}
-
-:global(.customer-auth-secondary) {
-  flex: 1;
-  border: 1px solid var(--web-border);
-  background: var(--web-surface-soft);
-  color: var(--web-text);
-}
-
-.customer-auth-fade-enter-active,
-.customer-auth-fade-leave-active {
-  transition: opacity 0.22s ease, transform 0.22s ease;
-}
-
-.customer-auth-fade-enter-from,
-.customer-auth-fade-leave-to {
-  opacity: 0;
-}
-
-:global([data-theme='dark']) .customer-auth-shell {
-  background:
-    radial-gradient(circle at top right, rgba(255, 106, 99, 0.14), transparent 30%),
-    linear-gradient(180deg, rgba(21, 28, 36, 0.99) 0%, rgba(15, 20, 28, 0.99) 100%);
-}
-
-:global([data-theme='dark']) .customer-auth-close,
-:global([data-theme='dark']) .customer-auth-secondary {
-  background: var(--web-surface-soft);
-  border-color: var(--web-border);
-  color: var(--web-text);
-}
-
-:global([data-theme='dark']) .customer-auth-message.error {
-  background: rgba(248, 113, 113, 0.14);
-  color: #fecaca;
-}
-
-:global([data-theme='dark']) .customer-auth-message.success {
-  background: rgba(34, 197, 94, 0.14);
-  color: #bbf7d0;
-}
-
-@media (max-width: 767px) {
-  :global(.customer-auth-overlay) {
-    align-items: flex-end;
-    padding: 0;
-  }
-
-  :global(.customer-auth-shell) {
-    width: 100%;
-    border-radius: 28px 28px 0 0;
-    padding: 22px 18px 28px;
-  }
-
-  :global(.customer-auth-hero) h2 {
-    font-size: 12px;
-  }
-
-  :global(.customer-auth-actions) {
-    display: grid;
-  }
-}
-</style>
+<style scoped src="./styles/CustomerAuthModal.css"></style>

@@ -56,6 +56,17 @@ export const Customer = sequelize.define(
       type: DataTypes.BOOLEAN,
       defaultValue: false
     },
+    isSuspended: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      field: 'is_suspended'
+    },
+    suspendReason: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      field: 'suspend_reason'
+    },
     deletedAt: {
       type: DataTypes.DATE,
       allowNull: true,

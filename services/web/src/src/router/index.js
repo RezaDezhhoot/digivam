@@ -35,7 +35,10 @@ const routes = [
       { path: 'customer/validation-flow/:validationId', name: 'customer-validation-flow', component: CustomerValidationFlowView, meta: { requiresCustomer: true } },
       { path: 'customer/self-validation/:validationId', name: 'customer-self-validation', component: SelfValidationView, meta: { requiresCustomer: true } },
       { path: 'customer/bookmarks', name: 'customer-bookmarks', component: CustomerBookmarksView, meta: { requiresCustomer: true } },
-      { path: 'customer/recently-viewed', name: 'customer-recently-viewed', component: CustomerRecentlyViewedView, meta: { requiresCustomer: true } }
+      { path: 'customer/recently-viewed', name: 'customer-recently-viewed', component: CustomerRecentlyViewedView, meta: { requiresCustomer: true } },
+      { path: 'customer/academy', name: 'customer-academy', component: () => import('../views/CustomerAcademyView.vue'), meta: { requiresCustomer: true } },
+      { path: 'licenses', name: 'licenses', component: () => import('../views/LicensesView.vue') },
+      { path: 'about-us', name: 'about-us', component: () => import('../views/AboutUsView.vue') }
     ]
   }
 ];
@@ -46,6 +49,12 @@ const router = createRouter({
 });
 
 router.beforeEach((to) => {
+  const profile = readStoredCustomerProfile();
+
+  if (profile?.isSuspended && to.path.startsWith('/customer/deal')) {
+    return { name: 'customer-dashboard', query: { suspended: '1' } };
+  }
+
   if (!to.meta?.requiresCustomer) {
     return true;
   }
@@ -61,7 +70,6 @@ router.beforeEach((to) => {
     };
   }
 
-  const profile = readStoredCustomerProfile();
   if (to.meta.requiresProfile && profile && profile.profile === false && to.name !== 'customer-profile') {
     return { name: 'customer-profile' };
   }

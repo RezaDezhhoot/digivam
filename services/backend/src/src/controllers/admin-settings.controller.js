@@ -6,6 +6,20 @@ import {
   upsertSetting
 } from '../services/site-settings.service.js';
 
+const uploadsRoot = path.resolve(process.cwd(), 'src', 'uploads');
+
+const toRelativeUploadPath = (filePath) =>
+  path.relative(uploadsRoot, String(filePath || '')).replace(/\\/g, '/');
+
+const parseJson = (value, fallback) => {
+  try {
+    const parsed = JSON.parse(String(value || ''));
+    return parsed == null ? fallback : parsed;
+  } catch {
+    return fallback;
+  }
+};
+
 export const getAdminSettings = async (_req, res, next) => {
   try {
     const items = await loadSettingsItems();
@@ -19,15 +33,41 @@ export const updateAdminSettings = async (req, res, next) => {
   try {
     const currentItems = await loadSettingsItems();
     const current = serializeAdminSettings(currentItems);
+    const files = req.files || {};
 
     let siteLogo = current.siteLogo || '';
-    if (req.file?.path) {
-      siteLogo = path.relative(path.resolve(process.cwd(), 'src', 'uploads'), req.file.path).replace(/\\/g, '/');
+    const siteLogoFile = Array.isArray(files.siteLogo) ? files.siteLogo[0] : req.file;
+    if (siteLogoFile?.path) {
+      siteLogo = toRelativeUploadPath(siteLogoFile.path);
     }
 
     if (!siteLogo) {
       return res.status(422).json({ message: 'لوگوی سایت الزامی است' });
     }
+
+    const licensesContentInput = parseJson(req.body.licensesContent, {});
+    const licenseItems = Array.isArray(licensesContentInput.items) ? licensesContentInput.items : [];
+    const uploadedLicenseImages = Array.isArray(files.licensesImages) ? files.licensesImages : [];
+    const imageIndexes = parseJson(req.body.licensesImageIndexes, []);
+
+    const uploadedByIndex = new Map();
+    uploadedLicenseImages.forEach((file, index) => {
+      const itemIndex = Number(imageIndexes[index]);
+      if (Number.isInteger(itemIndex) && itemIndex >= 0 && file?.path) {
+        uploadedByIndex.set(itemIndex, toRelativeUploadPath(file.path));
+      }
+    });
+
+    const normalizedLicensesContent = {
+      heroTitle: String(licensesContentInput.heroTitle || '').trim(),
+      heroDescription: String(licensesContentInput.heroDescription || '').trim(),
+      items: licenseItems.map((item, index) => ({
+        title: String(item?.title || '').trim(),
+        description: String(item?.description || '').trim(),
+        imageUrl: uploadedByIndex.get(index) || String(item?.imageUrl || '').trim(),
+        verifyUrl: String(item?.verifyUrl || '').trim()
+      }))
+    };
 
     await Promise.all([
       upsertSetting(SETTING_KEYS.SITE_NAME, String(req.body.siteName || '').trim()),
@@ -51,7 +91,11 @@ export const updateAdminSettings = async (req, res, next) => {
       upsertSetting(SETTING_KEYS.MARKET_META_KEYWORDS, String(req.body.marketMetaKeywords || '').trim()),
       upsertSetting(SETTING_KEYS.HOME_FEATURE_CARDS, String(req.body.homeFeatureCards || '[]').trim() || '[]'),
       upsertSetting(SETTING_KEYS.FOOTER_CONTENT, String(req.body.footerContent || '{}').trim() || '{}'),
-      upsertSetting(SETTING_KEYS.FEATURED_FACILITY_ID, req.body.featuredFacilityId ? String(Number(req.body.featuredFacilityId || 0)) : '')
+      upsertSetting(SETTING_KEYS.FEATURED_FACILITY_ID, req.body.featuredFacilityId ? String(Number(req.body.featuredFacilityId || 0)) : ''),
+      upsertSetting(SETTING_KEYS.ABOUT_US_CONTENT, String(req.body.aboutUsContent || '{}').trim() || '{}'),
+      upsertSetting(SETTING_KEYS.WELCOME_MESSAGE_CUSTOMER, String(req.body.welcomeMessageCustomer || '').trim()),
+      upsertSetting(SETTING_KEYS.WELCOME_MESSAGE_BROKER, String(req.body.welcomeMessageBroker || '').trim()),
+      upsertSetting(SETTING_KEYS.LICENSES_CONTENT, JSON.stringify(normalizedLicensesContent))
     ]);
 
     const items = await loadSettingsItems();

@@ -1,0 +1,409 @@
+/* ── Backdrop ── */
+.withdrawal-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+}
+
+/* ── Modal Shell ── */
+.wd-modal {
+  width: 100%;
+  max-width: 660px;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  border-radius: 20px;
+  background: var(--admin-surface);
+  border: 1px solid var(--admin-border);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.22);
+  overflow: hidden;
+}
+
+/* ── Header ── */
+.wd-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 22px 28px 18px;
+  border-bottom: 1px solid var(--admin-border);
+}
+
+.wd-modal-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--admin-text);
+}
+
+.wd-modal-kicker {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--admin-primary);
+  background: color-mix(in srgb, var(--admin-primary) 10%, transparent);
+  padding: 3px 10px;
+  border-radius: 20px;
+  margin-bottom: 6px;
+}
+
+.wd-modal-close {
+  all: unset;
+  cursor: pointer;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  color: var(--admin-muted);
+  font-size: 16px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.wd-modal-close:hover {
+  background: var(--admin-hover);
+  color: var(--admin-text);
+}
+
+/* ── Body ── */
+.wd-modal-body {
+  padding: 24px 28px;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+/* ── Sections ── */
+.wd-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.wd-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--admin-text);
+}
+
+.wd-section-title i {
+  color: var(--admin-primary);
+  font-size: 15px;
+}
+
+/* ── Info Grid (Broker details) ── */
+.wd-info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.wd-info-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--admin-hover);
+  border: 1px solid var(--admin-border);
+}
+
+.wd-info-card > i {
+  margin-top: 2px;
+  font-size: 14px;
+  color: var(--admin-primary);
+  flex-shrink: 0;
+}
+
+.wd-info-card > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.wd-info-card span {
+  font-size: 11px;
+  color: var(--admin-muted);
+  font-weight: 600;
+}
+
+.wd-info-card strong {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--admin-text);
+  word-break: break-all;
+}
+
+.wd-info-card--wide {
+  grid-column: span 2;
+}
+
+/* ── Amount Box ── */
+.wd-amount-box {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 20px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--admin-primary) 8%, transparent), color-mix(in srgb, var(--admin-primary) 3%, transparent));
+  border: 1px solid color-mix(in srgb, var(--admin-primary) 20%, transparent);
+}
+
+.wd-amount-icon {
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: var(--admin-primary);
+  color: #fff;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.wd-amount-box > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.wd-amount-box > div span {
+  font-size: 11px;
+  color: var(--admin-muted);
+  font-weight: 600;
+}
+
+.wd-amount-box > div strong {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--admin-text);
+  letter-spacing: -0.02em;
+}
+
+.wd-amount-date {
+  font-size: 12px;
+  color: var(--admin-muted);
+  white-space: nowrap;
+}
+
+/* ── Form Grid ── */
+.wd-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+}
+
+.wd-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wd-form-group--full {
+  grid-column: span 2;
+}
+
+.wd-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--admin-text);
+}
+
+.wd-required {
+  color: #ef4444;
+  margin-inline-start: 2px;
+}
+
+.wd-select,
+.wd-textarea {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--admin-border);
+  background: var(--admin-surface);
+  color: var(--admin-text);
+  font-size: 13px;
+  font-family: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  outline: none;
+}
+
+.wd-select:focus,
+.wd-textarea:focus {
+  border-color: var(--admin-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--admin-primary) 12%, transparent);
+}
+
+.wd-textarea {
+  resize: vertical;
+  min-height: 64px;
+}
+
+/* ── File Upload ── */
+.wd-file-upload {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  border-radius: 12px;
+  border: 2px dashed var(--admin-border);
+  background: var(--admin-hover);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.wd-file-upload:hover {
+  border-color: var(--admin-primary);
+  background: color-mix(in srgb, var(--admin-primary) 5%, transparent);
+}
+
+.wd-file-upload i {
+  font-size: 20px;
+  color: var(--admin-primary);
+}
+
+.wd-file-upload span {
+  font-size: 13px;
+  color: var(--admin-muted);
+  font-weight: 500;
+}
+
+/* ── Footer ── */
+.wd-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 28px;
+  border-top: 1px solid var(--admin-border);
+}
+
+.wd-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 22px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s, box-shadow 0.15s, opacity 0.15s;
+}
+
+.wd-btn--ghost {
+  background: var(--admin-hover);
+  color: var(--admin-muted);
+}
+
+.wd-btn--ghost:hover {
+  background: var(--admin-border);
+  color: var(--admin-text);
+}
+
+.wd-btn--primary {
+  background: var(--admin-primary);
+  color: #fff;
+}
+
+.wd-btn--primary:hover {
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--admin-primary) 35%, transparent);
+}
+
+.wd-btn--primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ── Transitions ── */
+.wd-modal-enter-active,
+.wd-modal-leave-active {
+  transition: opacity 0.25s ease;
+}
+
+.wd-modal-enter-active .wd-modal,
+.wd-modal-leave-active .wd-modal {
+  transition: transform 0.25s ease, opacity 0.25s ease;
+}
+
+.wd-modal-enter-from,
+.wd-modal-leave-to {
+  opacity: 0;
+}
+
+.wd-modal-enter-from .wd-modal {
+  transform: translateY(24px) scale(0.97);
+  opacity: 0;
+}
+
+.wd-modal-leave-to .wd-modal {
+  transform: translateY(12px) scale(0.98);
+  opacity: 0;
+}
+
+/* ── Utility ── */
+.dir-ltr {
+  direction: ltr;
+  text-align: left;
+}
+
+/* ── Responsive ── */
+@media (max-width: 680px) {
+  .withdrawal-modal-backdrop {
+    padding: 8px;
+  }
+
+  .wd-modal {
+    max-height: 96vh;
+    border-radius: 16px;
+  }
+
+  .wd-modal-header {
+    padding: 18px 20px 14px;
+  }
+
+  .wd-modal-body {
+    padding: 18px 20px;
+    gap: 18px;
+  }
+
+  .wd-info-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .wd-info-card--wide {
+    grid-column: span 1;
+  }
+
+  .wd-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .wd-form-group--full {
+    grid-column: span 1;
+  }
+
+  .wd-amount-box > div strong {
+    font-size: 16px;
+  }
+
+  .wd-modal-footer {
+    padding: 14px 20px;
+  }
+}

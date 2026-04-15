@@ -172,6 +172,26 @@ export const signCustomerDealContract = (id, payload) =>
     body: JSON.stringify(payload)
   });
 
+export const requestCustomerDealTransferOtp = (dealId) =>
+  fetchJson(`${API_BASE}/customer/deals/${dealId}/transfer/request-otp`, {
+    method: 'POST',
+    headers: { ...customerAuthHeaders(), 'Content-Type': 'application/json' }
+  });
+
+export const confirmCustomerDealTransfer = (dealId, payload) =>
+  fetchJson(`${API_BASE}/customer/deals/${dealId}/transfer/confirm`, {
+    method: 'POST',
+    headers: { ...customerAuthHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+
+export const requestCustomerDealAdminReview = (dealId, payload) =>
+  fetchJson(`${API_BASE}/customer/deals/${dealId}/admin-review`, {
+    method: 'POST',
+    headers: { ...customerAuthHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+
 export const startDealCashPayment = (dealId, paymentTypeId) =>
   fetchJson(`${API_BASE}/customer/deals/${dealId}/payment/${paymentTypeId}/cash-start`, {
     method: 'POST',
@@ -196,4 +216,28 @@ export const advanceDealPaymentStage = (dealId) =>
   fetchJson(`${API_BASE}/customer/deals/${dealId}/payment/advance`, {
     method: 'POST',
     headers: { ...customerAuthHeaders(), 'Content-Type': 'application/json' }
+  });
+
+export const getDealMessages = (dealId) =>
+  fetchJson(`${API_BASE}/customer/deals/${dealId}/messages`, {
+    headers: { ...customerAuthHeaders(), 'Content-Type': 'application/json' }
+  });
+
+export const sendDealMessage = (dealId, payload) =>
+  fetchJson(`${API_BASE}/customer/deals/${dealId}/messages`, {
+    method: 'POST',
+    headers: { ...customerAuthHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+
+export const getDealUnreadCount = (dealId) =>
+  fetchJson(`${API_BASE}/customer/deals/${dealId}/messages/unread`, {
+    headers: { ...customerAuthHeaders(), 'Content-Type': 'application/json' }
+  });
+
+export const rateBrokerForDeal = (dealId, payload) =>
+  fetchJson(`${API_BASE}/customer/deals/${dealId}/rate`, {
+    method: 'POST',
+    headers: { ...customerAuthHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
   });

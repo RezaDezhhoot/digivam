@@ -37,6 +37,7 @@ const ticketSummary = computed(() => ({
 }));
 
 const latestTickets = computed(() => tickets.value.slice(0, 4));
+const latestDeal = computed(() => (latestDeals.value.length ? latestDeals.value[0] : null));
 
 const quickStats = computed(() => [
   {
@@ -283,6 +284,61 @@ onMounted(() => {
         </div>
       </div>
 
+      <div class="quick-access-card mt-3">
+        <div class="report-head mb-0">
+          <div>
+            <h2 class="report-title">دسترسی سریع</h2>
+            <p class="report-subtitle">ابزارهای پرکاربرد کارگزار برای مدیریت سریع تر پرونده ها</p>
+          </div>
+        </div>
+
+        <div class="quick-access-grid">
+          <router-link class="quick-link" to="/deals">
+            <i class="fa-solid fa-briefcase"></i>
+            <div>
+              <strong>کارتابل معاملات</strong>
+              <small>{{ formatNumber(dealSummary.total) }} پرونده</small>
+            </div>
+          </router-link>
+
+          <router-link class="quick-link" to="/loan/create">
+            <i class="fa-solid fa-file-invoice-dollar"></i>
+            <div>
+              <strong>مدیریت امتیازها</strong>
+              <small>{{ formatNumber(facilitySummary.total) }} امتیاز ثبت شده</small>
+            </div>
+          </router-link>
+
+          <router-link class="quick-link" to="/validity">
+            <i class="fa-solid fa-wallet"></i>
+            <div>
+              <strong>کیف پول</strong>
+              <small>{{ formatMoney(walletBalance) }}</small>
+            </div>
+          </router-link>
+
+          <router-link class="quick-link" to="/notifications">
+            <i class="fa-solid fa-bell"></i>
+            <div>
+              <strong>اعلان ها</strong>
+              <small>{{ formatNumber(notificationSummary.unread) }} خوانده نشده</small>
+            </div>
+          </router-link>
+        </div>
+
+        <div class="quick-last-deal" v-if="latestDeal">
+          <span class="status-pill" :class="dealStatusMeta(latestDeal.status).className">
+            <i :class="dealStatusMeta(latestDeal.status).icon" class="me-1"></i>{{ latestDeal.statusLabel }}
+          </span>
+          <p>
+            آخرین پرونده:
+            <strong>{{ latestDeal.facility?.title || 'بدون عنوان' }}</strong>
+            برای {{ latestDeal.customer?.name || 'مشتری' }}
+            به مبلغ {{ formatMoney(latestDeal.requestedAmount) }}
+          </p>
+        </div>
+      </div>
+
       <div class="facility-status-strip mt-3">
         <div v-for="item in facilityStatusCards" :key="item.label" class="facility-status-card" :class="`facility-status-card-${item.tone}`">
           <div class="facility-status-icon"><i :class="item.icon"></i></div>
@@ -502,358 +558,4 @@ onMounted(() => {
   </section>
 </template>
 
-<style scoped>
-.dashboard-hero {
-  border-radius: 16px;
-  padding: 28px;
-  background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-secondary) 100%);
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  gap: 20px;
-  flex-wrap: wrap;
-  color: #fff;
-}
-
-.hero-kicker {
-  font-size: 14px;
-  opacity: 0.7;
-  margin-bottom: 8px;
-}
-
-.hero-kicker i {
-  margin-left: 4px;
-}
-
-.hero-title {
-  font-size: 22px;
-  font-weight: 700;
-  margin-bottom: 8px;
-}
-
-.hero-desc {
-  font-size: 14px;
-  opacity: 0.76;
-  margin: 0;
-  max-width: 520px;
-}
-
-.hero-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
-.hero-chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 8px 14px;
-  border-radius: 999px;
-  font-size: 13px;
-  font-weight: 700;
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
-}
-
-.hero-chip-success {
-  background: rgba(255, 255, 255, 0.18);
-}
-
-.hero-chip-warning {
-  background: rgba(255, 244, 191, 0.18);
-}
-
-.hero-chip-alert {
-  background: rgba(255, 255, 255, 0.18);
-}
-
-.hero-chip-wallet {
-  background: rgba(34, 197, 94, 0.22);
-}
-
-.hero-chip-deal {
-  background: rgba(255, 255, 255, 0.18);
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 14px;
-}
-
-.stat-card,
-.report-card,
-.content-card,
-.empty-card {
-  background: var(--surface-color);
-  border: 1px solid var(--panel-border);
-  border-radius: 14px;
-  padding: 22px;
-  box-shadow: var(--panel-shadow);
-}
-
-.stat-card {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.stat-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px;
-  flex-shrink: 0;
-}
-
-.stat-icon-verify { background: rgba(219, 0, 0, 0.1); color: var(--brand-primary); }
-.stat-icon-wallet { background: rgba(34, 197, 94, 0.12); color: #15803d; }
-.stat-icon-total { background: rgba(59, 130, 246, 0.1); color: #2563eb; }
-.stat-icon-deal { background: rgba(14, 165, 233, 0.12); color: #0f766e; }
-.stat-icon-review { background: rgba(245, 158, 11, 0.14); color: #b45309; }
-.stat-icon-alert { background: rgba(249, 115, 22, 0.12); color: #ea580c; }
-.stat-icon-views { background: rgba(168, 85, 247, 0.12); color: #7c3aed; }
-.stat-icon-ticket { background: rgba(99, 102, 241, 0.12); color: #4f46e5; }
-
-.stat-label { font-size: 13px; color: var(--muted-text); margin: 0 0 4px; }
-.stat-value { font-size: 18px; font-weight: 700; margin: 0; }
-.stat-hint { font-size: 12px; color: var(--muted-text); margin: 6px 0 0; }
-
-.facility-status-strip {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.facility-status-card {
-  border-radius: 16px;
-  border: 1px solid var(--panel-border);
-  padding: 16px;
-  background: var(--surface-color);
-  box-shadow: var(--panel-shadow);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.facility-status-card span {
-  font-size: 12px;
-  color: var(--muted-text);
-}
-
-.facility-status-card strong {
-  font-size: 24px;
-}
-
-.facility-status-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(219, 0, 0, 0.1);
-  color: var(--brand-primary);
-}
-
-.facility-status-card-warning { background: var(--status-warning-soft); }
-.facility-status-card-success { background: var(--status-success-soft); }
-.facility-status-card-danger { background: var(--status-danger-soft); }
-.facility-status-card-info { background: var(--status-info-soft); }
-.facility-status-card-muted { background: var(--status-muted-soft); }
-
-.report-card {
-  height: 100%;
-}
-
-.report-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 18px;
-}
-
-.report-head-stacked {
-  align-items: flex-start;
-}
-
-.report-title { font-size: 16px; font-weight: 700; margin: 0 0 4px; }
-.report-subtitle { font-size: 13px; color: var(--muted-text); margin: 0; }
-
-.ticket-report-list,
-.notification-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.ticket-report-item,
-.notification-card {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px 16px;
-  border-radius: 14px;
-  background: var(--surface-soft);
-  border: 1px solid var(--panel-border);
-}
-
-.ticket-report-item {
-  flex-direction: row;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.ticket-report-item-rich {
-  align-items: flex-start;
-}
-
-.ticket-report-main { min-width: 0; }
-.ticket-report-subject { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
-.ticket-report-date { font-size: 12px; color: var(--muted-text); }
-
-.notification-card.unread {
-  border-color: rgba(219, 0, 0, 0.24);
-  box-shadow: 0 12px 28px rgba(219, 0, 0, 0.06);
-}
-
-.notification-card-head,
-.notification-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.notification-title {
-  font-size: 14px;
-  font-weight: 800;
-  margin: 0;
-}
-
-.notification-body {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.9;
-  color: var(--brand-text);
-  display: -webkit-box;
-  line-clamp: 2;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.category-chip,
-.status-pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 12px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.notification-time {
-  font-size: 12px;
-  color: var(--muted-text);
-}
-
-.status-pending { background: #fff4d8; color: #b45309; }
-.status-answered { background: #dcfce7; color: #166534; }
-.status-closed { background: #ffe4e6; color: #be123c; }
-.status-info { background: #dbeafe; color: #1d4ed8; }
-.status-muted { background: #f3f4f6; color: #6b7280; }
-
-.verify-level-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.verify-level-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  padding: 14px 16px;
-  border-radius: 14px;
-  border: 1px solid var(--panel-border);
-  background: var(--surface-soft);
-}
-
-.verify-level-item.active {
-  border-color: var(--brand-primary);
-  background: rgba(219, 0, 0, 0.05);
-}
-
-.verify-level-item.done {
-  border-color: rgba(22, 163, 74, 0.18);
-  background: rgba(22, 163, 74, 0.06);
-}
-
-.verify-level-icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--chip-bg);
-  color: var(--brand-primary);
-  flex-shrink: 0;
-}
-
-.verify-level-item.done .verify-level-icon,
-.verify-level-item.success .verify-level-icon {
-  background: rgba(22, 163, 74, 0.12);
-  color: #15803d;
-}
-
-.verify-level-title { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
-.verify-level-desc { font-size: 12px; color: var(--muted-text); line-height: 1.8; }
-
-.empty-card {
-  text-align: center;
-}
-
-.empty-icon { font-size: 48px; color: var(--muted-text); opacity: 0.3; margin-bottom: 16px; }
-.empty-card h3 { font-size: 17px; font-weight: 700; margin-bottom: 8px; }
-.empty-card p { font-size: 14px; color: var(--muted-text); margin-bottom: 0; max-width: 480px; margin-inline: auto; }
-
-.compact-empty {
-  padding: 32px 16px;
-}
-
-@media (max-width: 1199px) {
-  .facility-status-strip {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 767px) {
-  .dashboard-hero { padding: 20px; }
-  .ticket-report-item,
-  .report-head {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .facility-status-strip {
-    grid-template-columns: 1fr;
-  }
-}
-
-.content-card {
-  position: relative;
-}
-
-.daily-view-controls {
-  min-width: 140px;
-}
-</style>
+<style scoped src="./styles/BrokerPanelView.css"></style>

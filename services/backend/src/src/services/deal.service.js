@@ -3,6 +3,7 @@ import { Op } from 'sequelize';
 import { env } from '../config/env.js';
 import '../models/index.js';
 import { Broker } from '../models/broker.model.js';
+import { BrokerRate } from '../models/broker-rate.model.js';
 import { Customer } from '../models/customer.model.js';
 import { CustomerValidation } from '../models/customer-validation.model.js';
 import { Deal } from '../models/deal.model.js';
@@ -14,11 +15,14 @@ import { FacilityProfit } from '../models/facility-profit.model.js';
 import { File } from '../models/file.model.js';
 import { Type } from '../models/type.model.js';
 import { Validation } from '../models/validation.model.js';
+import { Wallet } from '../models/wallet.model.js';
 import { serializeCustomerValidation } from './customer-validation.service.js';
+import { debitWallet, ensureWallet, creditWallet } from './wallet.service.js';
 import { sendOtpSms } from './sms.service.js';
 import { createPaginationResult } from '../utils/pagination.js';
 import {
   DEAL_ACT_BY,
+  DEAL_LOAN_TYPES,
   DEAL_PAYMENT_STATUSES,
   DEAL_PAYMENT_STATUS_LABELS,
   DEAL_LOAN_TYPE_LABELS,
@@ -167,6 +171,60 @@ const buildFileUrl = (file) => {
   return `${env.backendBaseUrl}/uploads/${rawPath.replace(/^\/+/, '')}`;
 };
 
+const buildFileDownloadUrl = (file) => {
+  const fileId = Number(file?.id || 0);
+  return fileId > 0 ? `${env.backendBaseUrl}/api/files/${fileId}/download` : null;
+};
+
+const normalizeAdminReviewData = (value) => {
+  const parsed = parseObject(value, null);
+  return parsed && typeof parsed === 'object' ? parsed : null;
+};
+
+const buildAdminReviewSnapshot = ({ status, step, actBy, level }) => ({
+  status: normalizeString(status) || Deal.STATUSES.IN_PROGRESS,
+  step: normalizeString(step) || Deal.STEPS.SUBMIT,
+  actBy: normalizeString(actBy) || Deal.ACT_BY.CUSTOMER,
+  level: Number(level || getDealStepLevel(step))
+});
+
+const assertDealNotInAdminReview = (deal) => {
+  if (!deal?.adminReviewMode) {
+    return;
+  }
+
+  const reviewData = normalizeAdminReviewData(deal.adminReviewData);
+  const reviewReason = normalizeString(reviewData?.reason);
+  const error = new Error(reviewReason ? `این معامله در حال بررسی مدیریت است. علت: ${reviewReason}` : 'این معامله در حال بررسی مدیریت است و تا پایان بررسی امکان اقدام وجود ندارد');
+  error.status = 423;
+  error.code = 'DEAL_UNDER_ADMIN_REVIEW';
+  throw error;
+};
+
+const resolveAdminReviewRequestedByLabel = (requestedBy) => {
+  if (!requestedBy || typeof requestedBy !== 'object') {
+    return '-';
+  }
+
+  if (requestedBy.name) {
+    return requestedBy.name;
+  }
+
+  if (requestedBy.type === Deal.ACT_BY.CUSTOMER) {
+    return 'مشتری';
+  }
+
+  if (requestedBy.type === Deal.ACT_BY.BROKER) {
+    return 'کارگزار';
+  }
+
+  if (requestedBy.type === Deal.ACT_BY.ADMIN) {
+    return 'ادمین';
+  }
+
+  return '-';
+};
+
 const formatDate = (value) =>
   value ? new Date(value).toLocaleString('fa-IR', { dateStyle: 'short', timeStyle: 'short' }) : '-';
 
@@ -278,16 +336,17 @@ const rawAmountForContract = (deal) => new Intl.NumberFormat('fa-IR').format(Num
 
 const formatContractMoney = (value) => new Intl.NumberFormat('fa-IR').format(Number(value || 0));
 
-const getDealWizardSteps = ({ step, level, status }) => {
+const getDealWizardSteps = ({ step, level, status, loanType }) => {
   const currentLevel = Number(level || getDealStepLevel(step));
+  const transferStepTitle = loanType === DEAL_LOAN_TYPES.NON_BANKING ? 'انتقال وام توسط کارگزار' : DEAL_STEP_LABELS[DEAL_STEPS.TRANSFER];
   const definitions = [
     { key: 'base', title: 'اطلاعات پایه معامله', description: 'اطلاعات اصلی پرونده، طرفین و خلاصه مالی معامله.' },
     { key: DEAL_STEPS.SUBMIT, title: DEAL_STEP_LABELS[DEAL_STEPS.SUBMIT], description: 'مدارک و داده‌های ارسالی مشتری در این بخش قرار می‌گیرند.' },
     { key: DEAL_STEPS.VERIFY_BROKER, title: DEAL_STEP_LABELS[DEAL_STEPS.VERIFY_BROKER], description: 'بررسی اولیه کارگزار و تصمیم این مرحله.' },
     { key: DEAL_STEPS.CONTRACT, title: DEAL_STEP_LABELS[DEAL_STEPS.CONTRACT], description: 'متن قرارداد، روش‌های پرداخت و امضاهای طرفین.' },
     { key: DEAL_STEPS.PAYMENT, title: DEAL_STEP_LABELS[DEAL_STEPS.PAYMENT], description: 'اطلاعات مرتبط با پرداخت‌ها و روش‌های تسویه.' },
-    { key: DEAL_STEPS.TRANSFER, title: DEAL_STEP_LABELS[DEAL_STEPS.TRANSFER], description: 'وضعیت انتقال امتیاز و اقدامات اجرایی.' },
-    { key: DEAL_STEPS.VERIFY_CUSTOMER, title: DEAL_STEP_LABELS[DEAL_STEPS.VERIFY_CUSTOMER], description: 'تایید نهایی انتقال و جمع‌بندی از سمت مشتری.' },
+    { key: DEAL_STEPS.TRANSFER, title: transferStepTitle, description: 'کارگزار باید توضیحات مرحله انتقال و فایل‌های پشتیبان را ثبت کند و مشتری تا تکمیل این بخش منتظر می‌ماند.' },
+    { key: DEAL_STEPS.VERIFY_CUSTOMER, title: DEAL_STEP_LABELS[DEAL_STEPS.VERIFY_CUSTOMER], description: 'جزئیات ثبت‌شده انتقال برای مشتری نمایش داده می‌شود تا پیگیری نهایی پرونده انجام شود.' },
     { key: DEAL_STEPS.FINISHED, title: DEAL_STEP_LABELS[DEAL_STEPS.FINISHED], description: 'وضعیت نهایی پرونده و خروجی نهایی معامله.' }
   ];
 
@@ -527,7 +586,9 @@ const enrichDealPaymentTypes = async (items) => {
       .map((file) => ({
         fileId: Number(file.id),
         fileName: file.data?.originalName || file.subject || `file-${file.id}`,
+        title: String(file.data?.title || '').trim() || null,
         fileUrl: buildFileUrl(file),
+        downloadUrl: buildFileDownloadUrl(file),
         mimeType: file.mimeType || null,
         size: Number(file.size || 0) || null
       }));
@@ -545,6 +606,7 @@ const enrichDealPaymentTypes = async (items) => {
         fileIds: resolvedFiles.map((file) => file.fileId),
         files: resolvedFiles,
         fileUrl: lastFile?.fileUrl || null,
+        downloadUrl: lastFile?.downloadUrl || null,
         fileName: lastFile?.fileName || null
       }
     };
@@ -602,11 +664,12 @@ const buildDealContractHtml = ({ deal, typeModel, paymentTypes }) => {
   <title>${title}</title>
   <style>
     *{box-sizing:border-box;margin:0}
+    @page{size:A4;margin:0}
     body{margin:0;padding:0;background:#fff;font-family:Tahoma,Arial,sans-serif;color:#1a1a2e;line-height:1.8}
-    .deal-contract-wrap{max-width:900px;margin:0 auto}
-    .deal-contract-paper{position:relative;min-height:1200px;padding:0;background-size:cover;background-position:center;overflow:hidden;display:flex;flex-direction:column}
+    .deal-contract-wrap{width:min(210mm,100%);max-width:210mm;margin:0 auto}
+    .deal-contract-paper{position:relative;width:100%;min-height:297mm;padding:0;background-size:cover;background-position:center;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(15,23,42,.08)}
     .deal-contract-paper::before{content:'';position:absolute;inset:0;background:rgba(255,255,255,.92)}
-    .deal-contract-inner{position:relative;z-index:1;display:flex;flex-direction:column;min-height:1200px;padding:48px 44px 40px}
+    .deal-contract-inner{position:relative;z-index:1;display:flex;flex-direction:column;min-height:297mm;padding:16mm 14mm 12mm}
     .deal-contract-header{display:flex;align-items:center;gap:20px;padding-bottom:20px;border-bottom:1.5px solid #e8e8ef}
     .deal-contract-logo{width:64px;height:64px;border-radius:14px;object-fit:contain;background:#fff;border:1px solid #eee;padding:8px;flex-shrink:0}
     .deal-contract-header-main{flex:1}
@@ -624,14 +687,14 @@ const buildDealContractHtml = ({ deal, typeModel, paymentTypes }) => {
     .deal-contract-footer{margin-top:auto;padding-top:24px;border-top:1.5px solid #e8e8ef}
     .deal-contract-footer-note{font-size:12px;line-height:2;color:#6b7280;margin-bottom:20px}
     .deal-contract-signatures{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-    .deal-contract-signature-box{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border:1px solid #e5e7eb;border-radius:12px;background:#fafbfc;min-height:132px}
+    .deal-contract-signature-box{display:flex;flex-direction:column;gap:6px;padding:9px 10px;border:1px solid #e5e7eb;border-radius:10px;background:#fafbfc;min-height:96px}
     .deal-contract-signature-box--signed{border-color:#d1d5db;background:#fff}
     .deal-contract-signature-label{font-size:11px;font-weight:800;color:#6b7280;text-transform:uppercase}
-    .deal-contract-signature-placeholder{flex:1;border-radius:8px;background:repeating-linear-gradient(-45deg,#fafbfc,#fafbfc 8px,#f0f0f5 8px,#f0f0f5 16px);min-height:58px}
-    .deal-contract-signature-media{flex:1;border-radius:8px;border:1px solid #e5e7eb;background:#fff;display:flex;align-items:center;justify-content:center;padding:8px;min-height:58px}
-    .deal-contract-signature-media img{max-width:100%;max-height:100%;object-fit:contain}
-    .deal-contract-signature-name{font-size:12px;font-weight:700;color:#1a1a2e;text-align:center}
-    @media print{body{padding:0}.deal-contract-paper{box-shadow:none;max-width:none}.deal-contract-inner{padding:32px 28px 24px}}
+    .deal-contract-signature-placeholder{flex:1;border-radius:7px;background:repeating-linear-gradient(-45deg,#fafbfc,#fafbfc 8px,#f0f0f5 8px,#f0f0f5 16px);min-height:40px}
+    .deal-contract-signature-media{flex:1;border-radius:7px;border:1px solid #e5e7eb;background:#fff;display:flex;align-items:center;justify-content:center;padding:6px;min-height:40px}
+    .deal-contract-signature-media img{max-width:100%;max-height:48px;object-fit:contain}
+    .deal-contract-signature-name{font-size:11px;font-weight:700;color:#1a1a2e;text-align:center}
+    @media print{body{padding:0}.deal-contract-wrap{width:210mm;max-width:210mm}.deal-contract-paper{box-shadow:none}.deal-contract-inner{padding:16mm 14mm 12mm}}
   </style>
 </head>
 <body>
@@ -921,10 +984,60 @@ const enrichDealDocuments = async (documents) => {
       value: {
         fileId: file.id,
         fileName: file.data?.originalName || file.subject || `file-${file.id}`,
-        url: buildFileUrl(file)
+        url: buildFileUrl(file),
+        downloadUrl: buildFileDownloadUrl(file)
       }
     };
   });
+};
+
+const serializeFileReference = (file) => ({
+  fileId: Number(file.id),
+  fileName: file.data?.originalName || file.subject || `file-${file.id}`,
+  title: String(file.data?.title || '').trim() || null,
+  url: buildFileUrl(file),
+  downloadUrl: buildFileDownloadUrl(file),
+  size: Number(file.size || 0),
+  mimeType: file.mimeType || ''
+});
+
+const enrichFileReferences = async (fileIds = []) => {
+  const normalizedIds = [...new Set(
+    (Array.isArray(fileIds) ? fileIds : [])
+      .map((item) => Number(typeof item === 'object' ? item.fileId || item.id : item))
+      .filter((item) => Number.isFinite(item) && item > 0)
+  )];
+
+  if (!normalizedIds.length) {
+    return [];
+  }
+
+  const files = await File.findAll({ where: { id: normalizedIds } });
+  const fileMap = new Map(files.map((item) => [Number(item.id), item]));
+
+  return normalizedIds
+    .map((fileId) => fileMap.get(fileId))
+    .filter(Boolean)
+    .map(serializeFileReference);
+};
+
+const enrichDealTransferData = async (value) => {
+  const parsed = parseObject(value, null);
+
+  if (!parsed || typeof parsed !== 'object') {
+    return null;
+  }
+
+  const attachments = await enrichFileReferences(parsed.fileIds || parsed.attachments || []);
+  const submittedAt = parsed.submittedAt || null;
+
+  return {
+    description: normalizeString(parsed.description) || '',
+    attachments,
+    submittedAt,
+    submittedAtLabel: formatDate(submittedAt),
+    submittedBy: parsed.submittedBy || null
+  };
 };
 
 const serializeDealActor = (item, fallbackPrefix) => {
@@ -947,8 +1060,15 @@ export const serializeDeal = async (item) => {
   const documents = (raw) ? await enrichDealDocuments(raw.documents ?? []) : [];
   const completedDocuments = documents.filter(hasDocumentValue).length;
   const paymentTypes = await enrichDealPaymentTypes(raw?.paymentTypes ?? []);
+  const transferData = await enrichDealTransferData(raw?.transferData);
+  const adminReviewData = normalizeAdminReviewData(raw?.adminReviewData);
+  const adminReviewRequestedAt = adminReviewData?.requestedAt || null;
+  const isAdminReviewMode = Boolean(raw.adminReviewMode);
   const resolvedType = raw.facility?.subTypeModel?.type || raw.facility?.type || raw.facilityData?.type || null;
   const resolvedTypeLabel = DEAL_LOAN_TYPE_LABELS[resolvedType] || raw.facilityData?.typeLabel || resolvedType;
+  const hasRated = raw.status === Deal.STATUSES.DONE && raw.step === Deal.STEPS.FINISHED
+    ? Boolean(await BrokerRate.findOne({ where: { dealId: raw.id }, attributes: ['id'] }))
+    : false;
   let customerValidationData = raw.customerValidationData || null;
   const customerValidationId = Number(customerValidationData?.id || 0);
 
@@ -959,8 +1079,15 @@ export const serializeDeal = async (item) => {
       const freshCustomerValidationData = await serializeCustomerValidation(freshCustomerValidation);
       customerValidationData = {
         ...customerValidationData,
+        selfValidationFileId: freshCustomerValidationData.selfValidationFileId || customerValidationData.selfValidationFileId || null,
+        selfValidationFileUrl: freshCustomerValidationData.selfValidationFileUrl || customerValidationData.selfValidationFileUrl || null,
+        selfValidationFileDownloadUrl:
+          freshCustomerValidationData.selfValidationFileDownloadUrl || customerValidationData.selfValidationFileDownloadUrl || null,
+        selfValidationFileName: freshCustomerValidationData.selfValidationFileName || customerValidationData.selfValidationFileName || null,
         adminAttachmentId: freshCustomerValidationData.adminAttachmentId || customerValidationData.adminAttachmentId || null,
         adminAttachmentUrl: freshCustomerValidationData.adminAttachmentUrl || customerValidationData.adminAttachmentUrl || null,
+        adminAttachmentDownloadUrl:
+          freshCustomerValidationData.adminAttachmentDownloadUrl || customerValidationData.adminAttachmentDownloadUrl || null,
         adminAttachmentFileName: freshCustomerValidationData.adminAttachmentFileName || customerValidationData.adminAttachmentFileName || null
       };
     }
@@ -969,8 +1096,14 @@ export const serializeDeal = async (item) => {
   const wizardSteps = getDealWizardSteps({
     step: raw.step,
     level: raw.level,
-    status: raw.status
+    status: raw.status,
+    loanType: resolvedType
   });
+
+  const resolvedStepLabel =
+    raw.step === DEAL_STEPS.TRANSFER && resolvedType === DEAL_LOAN_TYPES.NON_BANKING
+      ? 'انتقال وام توسط کارگزار'
+      : Deal.STEP_LABELS[raw.step] || raw.step;
 
   return {
     id: raw.id,
@@ -984,7 +1117,7 @@ export const serializeDeal = async (item) => {
     status: raw.status,
     statusLabel: Deal.STATUS_LABELS[raw.status] || raw.status,
     step: raw.step,
-    stepLabel: Deal.STEP_LABELS[raw.step] || raw.step,
+    stepLabel: resolvedStepLabel,
     level: Number(raw.level || getDealStepLevel(raw.step)),
     actBy: raw.actBy,
     actByLabel: Deal.ACT_BY_LABELS[raw.actBy] || raw.actBy,
@@ -1003,11 +1136,24 @@ export const serializeDeal = async (item) => {
     paymentTypes,
     facilityData: raw.facilityData || null,
     contractData: raw.contractData ? stripLegacyDefaultContractBody({ html: raw.contractData, deal: raw }) : null,
+    adminReviewMode: isAdminReviewMode,
+    adminReviewData: adminReviewData
+      ? {
+          ...adminReviewData,
+          active: isAdminReviewMode,
+          reason: normalizeString(adminReviewData.reason) || '',
+          requestedAt: adminReviewRequestedAt,
+          requestedAtLabel: formatDate(adminReviewRequestedAt),
+          requestedByLabel: resolveAdminReviewRequestedByLabel(adminReviewData.requestedBy)
+        }
+      : null,
+    transferData,
     contractSignedByCustomer: Boolean(raw.contractSignedByCustomer),
     contractSignedByBroker: Boolean(raw.contractSignedByBroker),
     contractReady: Boolean(raw.contractData),
     contractFullySigned: Boolean(raw.contractSignedByCustomer && raw.contractSignedByBroker),
     customerValidationData,
+    brokerConfirmationAmount: raw.brokerConfirmationAmount == null ? null : String(raw.brokerConfirmationAmount),
     resultHistory: Array.isArray(raw.resultHistory) ? raw.resultHistory : [],
     submittedDocumentsAt: raw.submittedDocumentsAt,
     submittedDocumentsAtLabel: formatDate(raw.submittedDocumentsAt),
@@ -1017,18 +1163,33 @@ export const serializeDeal = async (item) => {
     updatedAtLabel: formatDate(raw.updatedAt),
     wizardSteps,
     activeWizardKey: raw.step || Deal.STEPS.SUBMIT,
-    canSubmitDocuments: raw.status === Deal.STATUSES.IN_PROGRESS && raw.step === Deal.STEPS.SUBMIT && raw.actBy === Deal.ACT_BY.CUSTOMER,
-    canBrokerReview: raw.status === Deal.STATUSES.IN_PROGRESS && raw.step === Deal.STEPS.VERIFY_BROKER && raw.actBy === Deal.ACT_BY.BROKER,
+    canSubmitDocuments: !isAdminReviewMode && raw.status === Deal.STATUSES.IN_PROGRESS && raw.step === Deal.STEPS.SUBMIT && raw.actBy === Deal.ACT_BY.CUSTOMER,
+    canBrokerReview: !isAdminReviewMode && raw.status === Deal.STATUSES.IN_PROGRESS && raw.step === Deal.STEPS.VERIFY_BROKER && raw.actBy === Deal.ACT_BY.BROKER,
+    canBrokerSubmitTransfer: !isAdminReviewMode && raw.status === Deal.STATUSES.IN_PROGRESS && raw.step === Deal.STEPS.TRANSFER && raw.actBy === Deal.ACT_BY.BROKER,
     canCustomerSignContract:
+      !isAdminReviewMode &&
       raw.status === Deal.STATUSES.IN_PROGRESS &&
       raw.step === Deal.STEPS.CONTRACT &&
       raw.actBy === Deal.ACT_BY.CUSTOMER_BROKER &&
       !raw.contractSignedByCustomer,
     canBrokerSignContract:
+      !isAdminReviewMode &&
       raw.status === Deal.STATUSES.IN_PROGRESS &&
       raw.step === Deal.STEPS.CONTRACT &&
       raw.actBy === Deal.ACT_BY.CUSTOMER_BROKER &&
       !raw.contractSignedByBroker,
+    canCustomerConfirmTransfer:
+      !isAdminReviewMode &&
+      raw.status === Deal.STATUSES.IN_PROGRESS &&
+      raw.step === Deal.STEPS.VERIFY_CUSTOMER &&
+      raw.actBy === Deal.ACT_BY.CUSTOMER,
+    canCustomerRequestAdminReview:
+      !isAdminReviewMode &&
+      raw.status === Deal.STATUSES.IN_PROGRESS &&
+      raw.step === Deal.STEPS.VERIFY_CUSTOMER &&
+      raw.actBy === Deal.ACT_BY.CUSTOMER,
+    hasRated,
+    canRate: raw.status === Deal.STATUSES.DONE && raw.step === Deal.STEPS.FINISHED && !hasRated,
     facility: raw.facility
       ? {
           id: raw.facility.id,
@@ -1167,8 +1328,10 @@ export const createDealForCustomer = async ({
       facilityData,
       customerValidationData,
       contractData: null,
+      transferData: null,
       contractSignedByCustomer: false,
       contractSignedByBroker: false,
+      brokerConfirmationAmount: null,
       submittedDocumentsAt: hasDocuments ? null : new Date()
     },
     { transaction }
@@ -1206,6 +1369,45 @@ const upsertDealFile = async ({ dealId, fieldName, file, transaction }) => {
   return File.create(payload, { transaction });
 };
 
+const createDealAttachmentFiles = async ({ dealId, files, subjectPrefix, transaction }) => {
+  const uploads = (Array.isArray(files) ? files : normalizeRequestFiles(files))
+    .map((entry) => {
+      if (entry?.file) {
+        return { file: entry.file, title: normalizeString(entry.title) };
+      }
+
+      return { file: entry, title: '' };
+    })
+    .filter((entry) => entry.file);
+
+  if (!uploads.length) {
+    return [];
+  }
+
+  return Promise.all(
+    uploads.map((entry, index) => {
+      const file = entry.file;
+      const relativePath = path.relative(uploadsRoot, file.path).replace(/\\/g, '/');
+
+      return File.create(
+        {
+          fileableType: 'deal',
+          fileableId: dealId,
+          subject: `${subjectPrefix}_${Date.now()}_${index + 1}`,
+          position: index,
+          path: relativePath,
+          mimeType: file.mimetype,
+          size: file.size,
+          disk: 'local',
+          status: 'processed',
+          data: { originalName: file.originalname, title: entry.title || '' }
+        },
+        { transaction }
+      );
+    })
+  );
+};
+
 const normalizeDocumentValue = ({ item, rawValue, currentValue }) => {
   if (rawValue === undefined) {
     return currentValue ?? null;
@@ -1231,6 +1433,8 @@ const normalizeDocumentValue = ({ item, rawValue, currentValue }) => {
 };
 
 export const saveDealDocuments = async ({ deal, fields, files, submit, transaction }) => {
+  assertDealNotInAdminReview(deal);
+
   const parsedFields = parseObject(fields);
   const uploadedFiles = new Map(normalizeRequestFiles(files).map((file) => [file.fieldname, file]));
   const currentDocuments = Array.isArray(deal.documents) ? deal.documents : [];
@@ -1295,7 +1499,9 @@ export const saveDealDocuments = async ({ deal, fields, files, submit, transacti
   return deal;
 };
 
-export const reviewDealByBroker = async ({ deal, brokerId, action, reason, paymentTypes, transaction }) => {
+export const reviewDealByBroker = async ({ deal, brokerId, action, reason, paymentTypes, confirmationAmount = 0, transaction }) => {
+  assertDealNotInAdminReview(deal);
+
   const history = Array.isArray(deal.resultHistory) ? [...deal.resultHistory] : [];
   const actorName = deal.broker?.name || `کارگزار #${brokerId}`;
 
@@ -1321,6 +1527,32 @@ export const reviewDealByBroker = async ({ deal, brokerId, action, reason, payme
   }
 
   const normalizedPaymentTypes = normalizeRequestedPaymentTypes(paymentTypes);
+  const alreadyPaid = Number(deal.brokerConfirmationAmount || 0) > 0;
+  const brokerConfirmationAmount = alreadyPaid
+    ? Number(deal.brokerConfirmationAmount)
+    : Math.max(Math.round(Number(confirmationAmount || 0)), 0);
+
+  if (brokerConfirmationAmount > 0 && !alreadyPaid) {
+    const wallet = await ensureWallet({
+      holderType: Wallet.HOLDER_TYPES.BROKER,
+      holderId: brokerId,
+      transaction
+    });
+
+    await debitWallet({
+      walletId: wallet.id,
+      amount: brokerConfirmationAmount,
+      payableType: 'deal_broker_confirmation',
+      payableId: Number(deal.id),
+      meta: {
+        dealId: Number(deal.id),
+        source: 'deal_review',
+        step: Deal.STEPS.VERIFY_BROKER
+      },
+      transaction
+    });
+  }
+
   const contractType = await loadContractType(deal);
   const hasContractTemplate = Boolean(contractType?.contractTemplate?.bodyHtml);
 
@@ -1361,8 +1593,10 @@ export const reviewDealByBroker = async ({ deal, brokerId, action, reason, payme
         level: getDealStepLevel(skipToStep),
         resultHistory: history,
         contractData: null,
+        transferData: null,
         contractSignedByCustomer: false,
-        contractSignedByBroker: false
+        contractSignedByBroker: false,
+        brokerConfirmationAmount: brokerConfirmationAmount || null
       },
       { transaction }
     );
@@ -1412,8 +1646,240 @@ export const reviewDealByBroker = async ({ deal, brokerId, action, reason, payme
       level: getDealStepLevel(Deal.STEPS.CONTRACT),
       resultHistory: history,
       contractData: contractHtml,
+      transferData: null,
       contractSignedByCustomer: false,
-      contractSignedByBroker: false
+      contractSignedByBroker: false,
+      brokerConfirmationAmount: brokerConfirmationAmount || null
+    },
+    { transaction }
+  );
+
+  return deal;
+};
+
+export const submitDealTransferByBroker = async ({ deal, brokerId, actorName, description, files, transaction }) => {
+  assertDealNotInAdminReview(deal);
+
+  if (deal.status !== Deal.STATUSES.IN_PROGRESS || deal.step !== Deal.STEPS.TRANSFER || deal.actBy !== Deal.ACT_BY.BROKER) {
+    throw Object.assign(new Error('این معامله در مرحله ثبت اطلاعات انتقال نیست'), { status: 422 });
+  }
+
+  const normalizedDescription = normalizeString(description);
+  if (!normalizedDescription) {
+    throw Object.assign(new Error('ثبت توضیحات انتقال الزامی است'), { status: 422 });
+  }
+
+  const uploadedFiles = normalizeRequestFiles(files?.uploads || files);
+  if (!uploadedFiles.length) {
+    throw Object.assign(new Error('حداقل یک فایل برای مرحله انتقال باید بارگذاری شود'), { status: 422 });
+  }
+
+  const rawFileTitles = Array.isArray(files?.fileTitles)
+    ? files.fileTitles
+    : files?.fileTitles != null
+      ? [files.fileTitles]
+      : [];
+  const normalizedFileTitles = rawFileTitles.map((item) => normalizeString(item));
+
+  if (normalizedFileTitles.length !== uploadedFiles.length || normalizedFileTitles.some((item) => !item)) {
+    throw Object.assign(new Error('برای هر فایل انتقال باید یک عنوان وارد شود'), { status: 422 });
+  }
+
+  const attachments = await createDealAttachmentFiles({
+    dealId: Number(deal.id),
+    files: uploadedFiles.map((file, index) => ({ file, title: normalizedFileTitles[index] })),
+    subjectPrefix: 'transfer_attachment',
+    transaction
+  });
+
+  const history = Array.isArray(deal.resultHistory) ? [...deal.resultHistory] : [];
+  history.push(
+    createResultEntry({
+      action: DEAL_RESULT_ACTIONS.UPDATE,
+      actorType: DEAL_ACT_BY.BROKER,
+      actorId: brokerId,
+      actorName,
+      note: 'کارگزار توضیحات و فایل‌های مرحله انتقال را ثبت کرد و پرونده در انتظار بررسی مشتری قرار گرفت.'
+    })
+  );
+
+  await deal.update(
+    {
+      transferData: {
+        description: normalizedDescription,
+        fileIds: attachments.map((item) => Number(item.id)),
+        submittedAt: new Date().toISOString(),
+        submittedBy: {
+          id: Number(brokerId),
+          name: normalizeString(actorName) || `کارگزار #${brokerId}`
+        }
+      },
+      step: Deal.STEPS.VERIFY_CUSTOMER,
+      actBy: Deal.ACT_BY.CUSTOMER,
+      level: getDealStepLevel(Deal.STEPS.VERIFY_CUSTOMER),
+      resultHistory: history
+    },
+    { transaction }
+  );
+
+  return deal;
+};
+
+export const requestDealTransferOtp = async ({ deal, actorPhone, actorName }) => {
+  assertDealNotInAdminReview(deal);
+
+  if (deal.status !== Deal.STATUSES.IN_PROGRESS || deal.step !== Deal.STEPS.VERIFY_CUSTOMER || deal.actBy !== Deal.ACT_BY.CUSTOMER) {
+    throw Object.assign(new Error('این معامله در مرحله تایید انتقال توسط مشتری نیست'), { status: 422 });
+  }
+
+  const phone = normalizeString(actorPhone);
+  if (!phone) {
+    throw Object.assign(new Error('شماره تلفن مشتری معتبر نیست'), { status: 422 });
+  }
+
+  const otpKey = buildContractOtpKey({ dealId: deal.id, actorType: 'transfer_customer', actorPhone: phone });
+  const existing = readContractOtpRecord(otpKey);
+
+  if (existing) {
+    const remaining = secondsToContractOtpResend(otpKey);
+    throw Object.assign(new Error('کد تایید قبلا ارسال شده است'), { status: 409, data: { resendIn: remaining } });
+  }
+
+  const otp = Math.floor(1000 + Math.random() * 9000).toString();
+  contractOtpStore.set(otpKey, {
+    code: otp,
+    expiresAt: contractOtpNow() + CONTRACT_OTP_TTL
+  });
+
+  await sendOtpSms(phone, otp, { templateId: env.smsCustomerOtpTemplateId || env.smsOtpTemplateId || '' });
+
+  return {
+    message: `کد تایید انتقال امتیاز برای ${actorName || 'مشتری'} ارسال شد`,
+    resendIn: secondsToContractOtpResend(otpKey)
+  };
+};
+
+export const confirmDealTransferByCustomer = async ({ deal, customerId, actorName, actorPhone, code, transaction }) => {
+  assertDealNotInAdminReview(deal);
+
+  if (deal.status !== Deal.STATUSES.IN_PROGRESS || deal.step !== Deal.STEPS.VERIFY_CUSTOMER || deal.actBy !== Deal.ACT_BY.CUSTOMER) {
+    throw Object.assign(new Error('این معامله در مرحله تایید انتقال توسط مشتری نیست'), { status: 422 });
+  }
+
+  const phone = normalizeString(actorPhone);
+  const otpKey = buildContractOtpKey({ dealId: deal.id, actorType: 'transfer_customer', actorPhone: phone });
+  const otpRecord = readContractOtpRecord(otpKey);
+
+  if (!otpRecord || otpRecord.code !== String(code || '').trim()) {
+    throw Object.assign(new Error('کد تایید نامعتبر است یا منقضی شده است'), { status: 401 });
+  }
+
+  contractOtpStore.delete(otpKey);
+
+  const history = Array.isArray(deal.resultHistory) ? [...deal.resultHistory] : [];
+  history.push(
+    createResultEntry({
+      action: DEAL_RESULT_ACTIONS.APPROVE,
+      actorType: DEAL_ACT_BY.CUSTOMER,
+      actorId: customerId,
+      actorName,
+      note: 'مشتری انتقال امتیاز را تایید کرد و پرونده با موفقیت نهایی شد.'
+    })
+  );
+
+  await deal.update(
+    {
+      status: Deal.STATUSES.DONE,
+      step: Deal.STEPS.FINISHED,
+      actBy: null,
+      level: getDealStepLevel(Deal.STEPS.FINISHED),
+      resultHistory: history
+    },
+    { transaction }
+  );
+
+  if (!deal.settledAt) {
+    const cashPayments = await DealPaymentType.findAll({
+      where: {
+        dealId: deal.id,
+        paymentType: 'cash',
+        status: DEAL_PAYMENT_STATUSES.DONE
+      },
+      transaction
+    });
+
+    const totalCash = cashPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
+    if (totalCash > 0 && deal.brokerId) {
+      const brokerWallet = await ensureWallet({
+        holderType: Wallet.HOLDER_TYPES.BROKER,
+        holderId: deal.brokerId,
+        name: 'کیف پول کارگزار',
+        transaction
+      });
+
+      await creditWallet({
+        walletId: brokerWallet.id,
+        amount: totalCash,
+        payableType: 'deal_settlement',
+        payableId: deal.id,
+        meta: { dealId: deal.id, description: 'واریز حق‌الزحمه از معامله' },
+        transaction
+      });
+    }
+
+    await deal.update({ settledAt: new Date() }, { transaction });
+  }
+
+  return deal;
+};
+
+export const requestDealAdminReviewByCustomer = async ({ deal, customerId, actorName, reason, transaction }) => {
+  assertDealNotInAdminReview(deal);
+
+  if (deal.status !== Deal.STATUSES.IN_PROGRESS || deal.step !== Deal.STEPS.VERIFY_CUSTOMER || deal.actBy !== Deal.ACT_BY.CUSTOMER) {
+    throw Object.assign(new Error('درخواست بررسی مدیریت فقط در مرحله تایید انتقال مشتری مجاز است'), { status: 422 });
+  }
+
+  const normalizedReason = normalizeString(reason);
+  if (!normalizedReason) {
+    throw Object.assign(new Error('ثبت علت درخواست بررسی مدیریت الزامی است'), { status: 422 });
+  }
+
+  const history = Array.isArray(deal.resultHistory) ? [...deal.resultHistory] : [];
+  history.push(
+    createResultEntry({
+      action: DEAL_RESULT_ACTIONS.UPDATE,
+      actorType: DEAL_ACT_BY.CUSTOMER,
+      actorId: customerId,
+      actorName,
+      reason: 'درخواست بررسی مدیریت ثبت شد',
+      note: normalizedReason
+    })
+  );
+
+  await deal.update(
+    {
+      adminReviewMode: true,
+      adminReviewData: {
+        active: true,
+        source: 'customer',
+        reason: normalizedReason,
+        requestedAt: new Date().toISOString(),
+        requestedBy: {
+          type: Deal.ACT_BY.CUSTOMER,
+          id: Number(customerId),
+          name: actorName
+        },
+        snapshot: buildAdminReviewSnapshot({
+          status: deal.status,
+          step: deal.step,
+          actBy: deal.actBy,
+          level: deal.level
+        })
+      },
+      actBy: Deal.ACT_BY.ADMIN,
+      resultHistory: history
     },
     { transaction }
   );
@@ -1422,6 +1888,8 @@ export const reviewDealByBroker = async ({ deal, brokerId, action, reason, payme
 };
 
 export const requestDealContractOtp = async ({ deal, actorType, actorPhone, actorName }) => {
+  assertDealNotInAdminReview(deal);
+
   ensureContractStepAccess({ deal, actorType });
 
   const phone = normalizeString(actorPhone);
@@ -1461,6 +1929,8 @@ export const requestDealContractOtp = async ({ deal, actorType, actorPhone, acto
 };
 
 export const signDealContract = async ({ deal, actorType, actorId, actorName, actorPhone, code, signature, transaction }) => {
+  assertDealNotInAdminReview(deal);
+
   ensureContractStepAccess({ deal, actorType });
 
   const normalizedSignature = String(signature || '').trim();
@@ -1542,13 +2012,20 @@ export const signDealContract = async ({ deal, actorType, actorId, actorName, ac
   return deal;
 };
 
-export const manageDealByAdmin = async ({ deal, status, step, actBy, note, adminId, adminName, transaction }) => {
+export const manageDealByAdmin = async ({ deal, status, step, actBy, note, adminReviewMode, adminReviewReason, adminId, adminName, transaction }) => {
+  if (deal.status === Deal.STATUSES.DONE && deal.step === Deal.STEPS.FINISHED) {
+    throw Object.assign(new Error('معامله اتمام‌یافته قابل تغییر نیست'), { status: 422 });
+  }
+
   const nextStatus = normalizeString(status) || null;
   const nextStep = normalizeString(step) || null;
   const nextActBy = normalizeString(actBy) || null;
   const nextNote = normalizeString(note) || null;
+  const nextAdminReviewMode = typeof adminReviewMode === 'boolean' ? adminReviewMode : null;
+  const nextAdminReviewReason = normalizeString(adminReviewReason) || null;
+  const currentAdminReviewData = normalizeAdminReviewData(deal.adminReviewData);
 
-  if (!nextStatus && !nextStep && !nextActBy && !nextNote) {
+  if (!nextStatus && !nextStep && !nextActBy && !nextNote && nextAdminReviewMode === null) {
     throw Object.assign(new Error('حداقل یکی از فیلدهای وضعیت، مرحله، صف اقدام یا پیام باید ارسال شود'), { status: 422 });
   }
 
@@ -1567,6 +2044,12 @@ export const manageDealByAdmin = async ({ deal, status, step, actBy, note, admin
   const updates = {};
   const history = Array.isArray(deal.resultHistory) ? [...deal.resultHistory] : [];
   const changeList = [];
+  const effectiveState = {
+    status: nextStatus || deal.status,
+    step: nextStep || deal.step,
+    actBy: nextActBy || deal.actBy,
+    level: nextStep ? getDealStepLevel(nextStep) : deal.level
+  };
 
   if (nextStatus && nextStatus !== deal.status) {
     updates.status = nextStatus;
@@ -1582,6 +2065,66 @@ export const manageDealByAdmin = async ({ deal, status, step, actBy, note, admin
   if (nextActBy && nextActBy !== deal.actBy) {
     updates.actBy = nextActBy;
     changeList.push(`صف اقدام به «${Deal.ACT_BY_LABELS[nextActBy] || nextActBy}» تغییر کرد`);
+  }
+
+  if (nextAdminReviewMode !== null && nextAdminReviewMode !== Boolean(deal.adminReviewMode)) {
+    if (nextAdminReviewMode) {
+      if (effectiveState.status !== Deal.STATUSES.IN_PROGRESS) {
+        throw Object.assign(new Error('فقط معامله‌های در جریان می‌توانند وارد بررسی مدیریت شوند'), { status: 422 });
+      }
+
+      const reviewReason = nextAdminReviewReason || nextNote || normalizeString(currentAdminReviewData?.reason);
+      if (!reviewReason) {
+        throw Object.assign(new Error('برای ورود معامله به بررسی مدیریت ثبت علت الزامی است'), { status: 422 });
+      }
+
+      updates.adminReviewMode = true;
+      updates.adminReviewData = {
+        ...(currentAdminReviewData || {}),
+        active: true,
+        source: 'admin',
+        reason: reviewReason,
+        requestedAt: new Date().toISOString(),
+        requestedBy: {
+          type: Deal.ACT_BY.ADMIN,
+          id: Number(adminId),
+          name: adminName
+        },
+        snapshot: buildAdminReviewSnapshot(effectiveState)
+      };
+      updates.actBy = Deal.ACT_BY.ADMIN;
+      changeList.push('پرونده وارد حالت «بررسی توسط مدیریت» شد');
+    } else {
+      const snapshot = currentAdminReviewData?.snapshot || null;
+
+      updates.adminReviewMode = false;
+      updates.adminReviewData = {
+        ...(currentAdminReviewData || {}),
+        active: false,
+        reason: nextAdminReviewReason || normalizeString(currentAdminReviewData?.reason) || '',
+        resolvedAt: new Date().toISOString(),
+        resolvedBy: {
+          type: Deal.ACT_BY.ADMIN,
+          id: Number(adminId),
+          name: adminName
+        }
+      };
+
+      if (!nextStatus && snapshot?.status) {
+        updates.status = snapshot.status;
+      }
+
+      if (!nextStep && snapshot?.step) {
+        updates.step = snapshot.step;
+        updates.level = Number(snapshot.level || getDealStepLevel(snapshot.step));
+      }
+
+      if (!nextActBy && snapshot?.actBy) {
+        updates.actBy = snapshot.actBy;
+      }
+
+      changeList.push('پرونده از حالت «بررسی توسط مدیریت» خارج شد');
+    }
   }
 
   history.push(
@@ -1686,6 +2229,8 @@ export const removeDealSignature = async ({ deal, role, adminId, adminName, tran
   return deal;
 };
 export const advanceDealPayment = async ({ deal, customerId, transaction }) => {
+  assertDealNotInAdminReview(deal);
+
   if (deal.status !== Deal.STATUSES.IN_PROGRESS || deal.step !== Deal.STEPS.PAYMENT || deal.actBy !== Deal.ACT_BY.CUSTOMER) {
     throw Object.assign(new Error('معامله در مرحله پرداخت مشتری نیست'), { status: 422 });
   }
@@ -1744,19 +2289,22 @@ export const clearDealSignature = async ({ deal, role, adminId, adminName, trans
   const currentPaymentTypes = Array.isArray(deal.paymentTypes) ? deal.paymentTypes.map(serializeDealPaymentType) : [];
   const otherRole = normalizedRole === 'broker' ? 'customer' : 'broker';
   const shouldPreserveOther = otherRole === 'broker' ? Boolean(deal.contractSignedByBroker) : Boolean(deal.contractSignedByCustomer);
+  const replacements = {};
+  if (shouldPreserveOther) {
+    const otherBlock = readContractBlock({
+      html: String(deal.contractData),
+      marker: `SIGNATURE_${otherRole.toUpperCase()}`
+    });
+    if (otherBlock) {
+      replacements[`SIGNATURE_${otherRole.toUpperCase()}`] = otherBlock;
+    }
+  }
+
   const newHtml = buildFreshContractHtml({
     deal,
     contractType,
     paymentTypes: currentPaymentTypes,
-    existingHtml: String(deal.contractData),
-    replacements: shouldPreserveOther
-      ? {
-          [`SIGNATURE_${otherRole.toUpperCase()}`]: readContractBlock({
-            html: String(deal.contractData),
-            marker: `SIGNATURE_${otherRole.toUpperCase()}`
-          })
-        }
-      : {}
+    replacements
   });
 
   const history = Array.isArray(deal.resultHistory) ? [...deal.resultHistory] : [];
@@ -1819,7 +2367,7 @@ export const listDeals = async ({ where = {}, page = 1, limit = 10, order } = {}
 };
 
 const awaitingWhereForActor = (actor, where = {}) => {
-  const base = { ...where, status: Deal.STATUSES.IN_PROGRESS };
+  const base = { ...where, status: Deal.STATUSES.IN_PROGRESS, adminReviewMode: false };
 
   if (actor === Deal.ACT_BY.CUSTOMER) {
     return {
@@ -1857,7 +2405,7 @@ export const createDealSummary = async (where = {}) => {
     Deal.count({ where: { ...where, status: Deal.STATUSES.DONE } }),
     Deal.count({ where: awaitingWhereForActor(Deal.ACT_BY.CUSTOMER, where) }),
     Deal.count({ where: awaitingWhereForActor(Deal.ACT_BY.BROKER, where) }),
-    Deal.count({ where: awaitingWhereForActor(Deal.ACT_BY.ADMIN, where) }),
+    Deal.count({ where: { ...where, status: Deal.STATUSES.IN_PROGRESS, adminReviewMode: true } }),
     Deal.count({ where: { ...where, step: Deal.STEPS.VERIFY_BROKER } })
   ]);
 

@@ -56,3 +56,28 @@ export const customerDealContractSignValidator = [
     .isLength({ min: 32, max: 5_000_000 })
     .withMessage('امضای قرارداد نامعتبر است')
 ];
+
+export const customerDealTransferConfirmValidator = [
+  param('id').isInt({ gt: 0 }).withMessage('شناسه معامله نامعتبر است'),
+  body('code').isString().isLength({ min: 4, max: 4 }).withMessage('کد تایید باید ۴ رقم باشد')
+];
+
+export const customerDealAdminReviewRequestValidator = [
+  param('id').isInt({ gt: 0 }).withMessage('شناسه معامله نامعتبر است'),
+  body('reason')
+    .isString()
+    .isLength({ min: 5, max: 5000 })
+    .withMessage('علت درخواست بررسی مدیریت باید بین ۵ تا ۵۰۰۰ کاراکتر باشد')
+];
+
+export const rateBrokerValidator = [
+  param('id').isInt({ gt: 0 }).withMessage('شناسه معامله نامعتبر است'),
+  body('score')
+    .isInt({ min: 1, max: 5 })
+    .withMessage('امتیاز باید عددی بین ۱ تا ۵ باشد'),
+  body('comment')
+    .optional({ values: 'falsy' })
+    .isString()
+    .isLength({ max: 1000 })
+    .withMessage('نظر حداکثر ۱۰۰۰ کاراکتر باشد')
+];

@@ -15,7 +15,7 @@ import {
 
 export const brokerTicketRouter = Router();
 
-brokerTicketRouter.use(requireAuth('broker'));
+brokerTicketRouter.use(requireAuth('broker', { allowSuspended: true }));
 
 brokerTicketRouter.get('/', listBrokerTickets);
 brokerTicketRouter.post('/', createBrokerTicketValidator, validateRequest, createBrokerTicket);

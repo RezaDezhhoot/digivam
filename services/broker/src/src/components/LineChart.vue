@@ -83,15 +83,4 @@ onBeforeUnmount(() => { if (chartInstance) chartInstance.destroy(); });
   </div>
 </template>
 
-<style scoped>
-.lc-wrap {
-  overflow-x: auto;
-  position: relative;
-}
-.lc-empty {
-  padding: 32px;
-  text-align: center;
-  color: var(--muted-text, #6b7280);
-  font-weight: 700;
-}
-</style>
+<style scoped src="./styles/LineChart.css"></style>

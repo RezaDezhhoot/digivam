@@ -1,0 +1,35 @@
+.otp-input-root {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.otp-input-box {
+  width: 100%;
+  min-height: 56px;
+  border-radius: 18px;
+  border: 1px solid var(--web-border);
+  background: var(--web-surface);
+  text-align: center;
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--web-text);
+}
+
+.otp-input-box:focus {
+  border-color: var(--web-primary);
+  outline: none;
+  box-shadow: 0 0 0 0.18rem rgba(193, 18, 18, 0.12);
+}
+
+@media (max-width: 767px) {
+  .otp-input-root {
+    gap: 8px;
+  }
+
+  .otp-input-box {
+    min-height: 52px;
+    border-radius: 16px;
+    font-size: 20px;
+  }
+}

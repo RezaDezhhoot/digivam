@@ -179,8 +179,8 @@ const renderDataField = (key, value) => {
 };
 
 const getFileUrl = (value) => {
-  if (value && typeof value === 'object' && value.url) {
-    return value.url;
+  if (value && typeof value === 'object' && (value.downloadUrl || value.url)) {
+    return value.downloadUrl || value.url;
   }
   return null;
 };
@@ -341,13 +341,13 @@ onMounted(load);
                 </div>
                 <div v-if="editingItem.selfValidation && editingItem.selfValidationFileUrl" class="cv-detail-item">
                   <span>فایل اعتبارسنجی شخصی</span>
-                  <a :href="editingItem.selfValidationFileUrl" target="_blank" rel="noopener noreferrer" class="cv-file-link">
+                  <a :href="editingItem.selfValidationFileDownloadUrl || editingItem.selfValidationFileUrl" download rel="noopener noreferrer" class="cv-file-link">
                     <i class="fa-solid fa-paperclip me-1"></i>{{ editingItem.selfValidationFileName || 'مشاهده فایل' }}
                   </a>
                 </div>
                 <div v-if="editingItem.adminAttachmentUrl" class="cv-detail-item">
                   <span>گزارش نهایی اعتبارسنجی</span>
-                  <a :href="editingItem.adminAttachmentUrl" target="_blank" rel="noopener noreferrer" class="cv-file-link">
+                  <a :href="editingItem.adminAttachmentDownloadUrl || editingItem.adminAttachmentUrl" download rel="noopener noreferrer" class="cv-file-link">
                     <i class="fa-solid fa-file-arrow-down me-1"></i>{{ editingItem.adminAttachmentFileName || 'دانلود گزارش نهایی' }}
                   </a>
                 </div>
@@ -369,7 +369,7 @@ onMounted(load);
                           <small v-if="isDocumentField(item)" class="text-muted">({{ getItemFieldTypeLabel(item) }})</small>
                         </span>
                         <template v-if="isFileField(item) && getFileUrl(item.value)">
-                          <a :href="item.value.url" target="_blank" rel="noopener noreferrer" class="cv-file-link">
+                          <a :href="item.value.downloadUrl || item.value.url" download rel="noopener noreferrer" class="cv-file-link">
                             <i class="fa-solid fa-paperclip me-1"></i>{{ getFileName(item.value) }}
                           </a>
                         </template>
@@ -387,7 +387,7 @@ onMounted(load);
                     <div v-for="(value, key) in editingItem.data" :key="key" class="cv-data-item">
                       <span>{{ key }}</span>
                       <template v-if="getFileUrl(value)">
-                        <a :href="getFileUrl(value)" target="_blank" rel="noopener noreferrer" class="cv-file-link">
+                        <a :href="getFileUrl(value)" download rel="noopener noreferrer" class="cv-file-link">
                           <i class="fa-solid fa-paperclip me-1"></i>{{ value.fileName || key }}
                         </a>
                       </template>
@@ -428,7 +428,7 @@ onMounted(load);
                   <small v-if="adminAttachmentFile" class="form-text text-muted">فایل انتخاب‌شده: {{ adminAttachmentFile.name }}</small>
                   <small v-else-if="editingItem.adminAttachmentUrl" class="form-text text-muted">
                     فایل فعلی:
-                    <a :href="editingItem.adminAttachmentUrl" target="_blank" rel="noopener noreferrer" class="cv-file-link inline-link">{{ editingItem.adminAttachmentFileName || 'دانلود گزارش نهایی' }}</a>
+                    <a :href="editingItem.adminAttachmentDownloadUrl || editingItem.adminAttachmentUrl" download rel="noopener noreferrer" class="cv-file-link inline-link">{{ editingItem.adminAttachmentFileName || 'دانلود گزارش نهایی' }}</a>
                   </small>
                   <small v-else class="form-text text-muted">فایل نهایی بررسی که ادمین برای این اعتبارسنجی ثبت می‌کند.</small>
                 </div>
@@ -501,7 +501,7 @@ onMounted(load);
                       <div v-for="(value, key) in editForm.data" :key="key" class="cv-data-item">
                         <span>{{ key }}</span>
                         <template v-if="getFileUrl(value)">
-                          <a :href="getFileUrl(value)" target="_blank" rel="noopener noreferrer" class="cv-file-link">
+                          <a :href="getFileUrl(value)" download rel="noopener noreferrer" class="cv-file-link">
                             <i class="fa-solid fa-paperclip me-1"></i>{{ getFileName(value, key) }}
                           </a>
                         </template>
@@ -526,347 +526,4 @@ onMounted(load);
   </section>
 </template>
 
-<style scoped>
-.cv-view {
-  display: grid;
-  gap: 18px;
-}
-
-.cv-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.cv-title {
-  margin: 0;
-  font-size: 24px;
-  font-weight: 800;
-  color: var(--admin-text);
-}
-
-.cv-subtitle {
-  margin: 6px 0 0;
-  color: var(--admin-muted);
-  font-size: 13px;
-}
-
-.cv-filters {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  align-items: flex-end;
-}
-
-.cv-filter-group {
-  min-width: 170px;
-}
-
-.cv-filter-search {
-  min-width: 250px;
-  flex: 1;
-}
-
-.cv-loading,
-.cv-empty {
-  padding: 32px;
-  text-align: center;
-  color: var(--admin-muted);
-  font-weight: 700;
-  border-radius: 20px;
-  background: var(--admin-surface);
-  border: 1px solid var(--admin-border);
-}
-
-.cv-table-wrap {
-  overflow-x: auto;
-  border-radius: 20px;
-  border: 1px solid var(--admin-border);
-  background: var(--admin-surface);
-  box-shadow: var(--admin-shadow);
-}
-
-.cv-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
-}
-
-.cv-table th,
-.cv-table td {
-  padding: 14px 16px;
-  white-space: nowrap;
-  text-align: start;
-  border-bottom: 1px solid var(--admin-border);
-}
-
-.cv-table th {
-  font-weight: 800;
-  color: var(--admin-muted);
-  font-size: 12px;
-  background: var(--admin-surface-soft, rgba(0,0,0,0.02));
-}
-
-.cv-table tbody tr:last-child td {
-  border-bottom: none;
-}
-
-.cv-table tbody tr:hover {
-  background: var(--admin-surface-soft, rgba(0,0,0,0.02));
-}
-
-.cv-customer-cell {
-  display: grid;
-  gap: 2px;
-}
-
-.cv-customer-cell span {
-  color: var(--admin-muted);
-  font-size: 12px;
-}
-
-.cv-status-badge {
-  display: inline-flex;
-  align-items: center;
-  min-height: 30px;
-  padding: 0 12px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.cv-method-badge {
-  display: inline-flex;
-  align-items: center;
-  min-height: 26px;
-  padding: 0 10px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.cv-method-self {
-  background: #eff6ff;
-  color: #2563eb;
-}
-
-.cv-method-digvam {
-  background: #f0fdf4;
-  color: #16a34a;
-}
-
-.cv-actions {
-  display: flex;
-  gap: 6px;
-}
-
-.cv-modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
-}
-
-.cv-modal-sheet {
-  width: 100%;
-  max-width: 820px;
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
-  border-radius: 24px;
-  background: var(--admin-surface);
-  border: 1px solid var(--admin-border);
-  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.22);
-  overflow: hidden;
-}
-
-.cv-modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--admin-border);
-}
-
-.cv-modal-header h3 {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 800;
-  color: var(--admin-text);
-}
-
-.cv-modal-close {
-  width: 36px;
-  height: 36px;
-  border: none;
-  border-radius: 12px;
-  background: var(--admin-surface-soft, rgba(0,0,0,0.04));
-  color: var(--admin-text);
-  font-size: 20px;
-  cursor: pointer;
-}
-
-.cv-modal-body {
-  padding: 24px;
-  overflow-y: auto;
-  flex: 1;
-}
-
-.cv-modal-footer {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-  padding: 16px 24px;
-  border-top: 1px solid var(--admin-border);
-}
-
-.cv-detail-grid,
-.cv-data-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
-  margin-bottom: 20px;
-}
-
-.cv-stage-block {
-  margin-bottom: 20px;
-  padding: 16px;
-  border-radius: 16px;
-  border: 1px solid var(--admin-border);
-  background: var(--admin-surface-soft, rgba(0,0,0,0.015));
-}
-
-.cv-stage-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
-.cv-stage-number {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: var(--admin-primary, #0b5f83);
-  color: #fff;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
-  font-weight: 800;
-  flex-shrink: 0;
-}
-
-.cv-stage-header strong {
-  font-size: 15px;
-}
-
-.cv-stage-desc {
-  font-size: 13px;
-  color: var(--admin-muted);
-  margin: 0 0 12px;
-}
-
-.cv-detail-item,
-.cv-data-item {
-  padding: 12px;
-  border-radius: 14px;
-  background: var(--admin-surface-soft, rgba(0,0,0,0.02));
-  border: 1px solid var(--admin-border);
-}
-
-.cv-detail-item span,
-.cv-data-item span {
-  display: block;
-  font-size: 12px;
-  color: var(--admin-muted);
-  margin-bottom: 4px;
-}
-
-.cv-detail-item strong,
-.cv-data-item strong {
-  display: block;
-  font-size: 14px;
-  word-break: break-word;
-}
-
-.cv-file-link {
-  display: block;
-  color: var(--admin-primary, #0b5f83);
-  font-weight: 700;
-  text-decoration: none;
-  word-break: break-word;
-}
-
-.cv-file-link:hover {
-  text-decoration: underline;
-}
-
-.cv-edit-section {
-  display: grid;
-  gap: 14px;
-}
-
-.cv-stage-block--editable {
-  margin-bottom: 0;
-}
-
-.cv-input-note {
-  display: block;
-  margin-top: 8px;
-  font-size: 12px;
-  color: var(--admin-muted);
-}
-
-.cv-submitted-data h4,
-.cv-form-section h4 {
-  margin: 0 0 14px;
-  font-size: 16px;
-  font-weight: 800;
-  color: var(--admin-text);
-}
-
-.cv-form-section {
-  margin-top: 20px;
-  padding-top: 20px;
-  border-top: 1px solid var(--admin-border);
-}
-
-.modal-fade-enter-active,
-.modal-fade-leave-active {
-  transition: opacity 0.2s ease;
-}
-
-.modal-fade-enter-from,
-.modal-fade-leave-to {
-  opacity: 0;
-}
-
-@media (max-width: 768px) {
-  .cv-filters {
-    flex-direction: column;
-  }
-
-  .cv-filter-group,
-  .cv-filter-search {
-    min-width: 100%;
-  }
-
-  .cv-detail-grid,
-  .cv-data-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .cv-modal-sheet {
-    max-width: 100%;
-  }
-}
-</style>
+<style scoped src="./styles/CustomerValidationsView.css"></style>

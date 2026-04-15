@@ -1,6 +1,12 @@
+import { Op } from 'sequelize';
 import { createWebHomePayload, findPublishedWebFacilityBySlug, listPublishedWebFacilities } from '../services/web-public.service.js';
 import { loadPublicSiteSettings } from '../services/site-settings.service.js';
 import { trackFacilityView } from './customer-recently-viewed.controller.js';
+import { Tutorial } from '../models/tutorial.model.js';
+import { File } from '../models/file.model.js';
+import { Setting } from '../models/setting.model.js';
+import { env } from '../config/env.js';
+import path from 'node:path';
 
 export const getWebHome = async (req, res, next) => {
   try {
@@ -93,6 +99,84 @@ export const getWebFacilityBySlug = async (req, res, next) => {
     }
 
     return res.status(200).json({ item, site });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+const uploadsRoot = path.resolve(process.cwd(), 'src', 'uploads');
+
+const tutorialFileUrl = (file) => {
+  if (!file) return null;
+  const rawPath = String(file.path || '').replace(/\\/g, '/');
+  if (/^https?:\/\//i.test(rawPath)) return rawPath;
+  const relativePath = rawPath.startsWith(uploadsRoot)
+    ? rawPath.slice(uploadsRoot.length).replace(/^\/+/, '')
+    : rawPath.replace(/^\/+/, '');
+  return `${env.backendBaseUrl}/uploads/${relativePath}`;
+};
+
+export const listPublicTutorials = async (req, res, next) => {
+  try {
+    const search = String(req.query.search || '').trim();
+    const where = { status: 'active' };
+
+    if (search) {
+      where.title = { [Op.like]: `%${search}%` };
+    }
+
+    const items = await Tutorial.findAll({
+      where,
+      include: [{ model: File, as: 'video', attributes: ['id', 'path', 'mimeType', 'size'] }],
+      order: [['sort', 'ASC'], ['id', 'DESC']]
+    });
+
+    return res.status(200).json({
+      items: items.map((item) => ({
+        id: item.id,
+        title: item.title,
+        description: item.description || '',
+        videoUrl: tutorialFileUrl(item.video),
+        createdAt: item.createdAt
+      }))
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const getAboutUs = async (req, res, next) => {
+  try {
+    const setting = await Setting.findOne({ where: { name: 'about_us_content' } });
+    let content = {};
+    try { content = JSON.parse(setting?.value || '{}'); } catch { content = { description: setting?.value || '' }; }
+    return res.status(200).json({ content });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const getLicenses = async (_req, res, next) => {
+  try {
+    const site = await loadPublicSiteSettings();
+    return res.status(200).json({
+      content: site.licensesContent || {}
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const getSiteConfig = async (_req, res, next) => {
+  try {
+    const site = await loadPublicSiteSettings();
+    return res.status(200).json({
+      site: {
+        siteName: site.siteName,
+        siteLogoUrl: site.siteLogoUrl,
+        faviconUrl: site.faviconUrl
+      }
+    });
   } catch (error) {
     return next(error);
   }

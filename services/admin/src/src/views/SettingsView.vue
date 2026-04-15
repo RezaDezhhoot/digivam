@@ -6,12 +6,17 @@ import { useAppToast } from '../composables/useToast.js';
 
 const toast = useAppToast();
 
+const formatMoney = (value) => `${new Intl.NumberFormat('fa-IR').format(Number(value || 0))} تومان`;
+
 const tabs = [
   { key: 'general', label: 'عمومی', icon: 'fa-solid fa-sliders' },
   { key: 'maintenance', label: 'دسترسی', icon: 'fa-solid fa-screwdriver-wrench' },
   { key: 'home', label: 'خانه', icon: 'fa-solid fa-house' },
   { key: 'footer', label: 'فوتر', icon: 'fa-solid fa-table-columns' },
-  { key: 'seo', label: 'سئو', icon: 'fa-solid fa-magnifying-glass-chart' }
+  { key: 'seo', label: 'سئو', icon: 'fa-solid fa-magnifying-glass-chart' },
+  { key: 'about', label: 'درباره ما', icon: 'fa-solid fa-circle-info' },
+  { key: 'licenses', label: 'مجوزها', icon: 'fa-solid fa-certificate' },
+  { key: 'welcome', label: 'پیام خوش‌آمدگویی', icon: 'fa-solid fa-hand' }
 ];
 
 const loading = ref(false);
@@ -45,7 +50,11 @@ function createInitialForm() {
     homeMetaKeywords: '',
     marketMetaTitle: '',
     marketMetaDescription: '',
-    marketMetaKeywords: ''
+    marketMetaKeywords: '',
+    aboutUsContent: { heroTitle: '', heroSubtitle: '', description: '', mission: '', vision: '', values: '', contactInfo: '', promiseCards: [{ title: '', text: '' }, { title: '', text: '' }, { title: '', text: '' }], principleCards: [{ title: '', text: '' }, { title: '', text: '' }, { title: '', text: '' }] },
+    welcomeMessageCustomer: '',
+    welcomeMessageBroker: '',
+    licensesContent: { heroTitle: '', heroDescription: '', items: [{ title: '', description: '', imageUrl: '', verifyUrl: '', imageFile: null, imagePreview: '' }] }
   };
 }
 
@@ -84,6 +93,16 @@ const normalizeCards = (cards) => {
   return normalized;
 };
 
+const normalizeCardList = (cards, min = 3) => {
+  const list = Array.isArray(cards)
+    ? cards.map((item) => ({ title: String(item?.title || ''), text: String(item?.text || '') }))
+    : [];
+  while (list.length < min) {
+    list.push({ title: '', text: '' });
+  }
+  return list;
+};
+
 const normalizeLinks = (links) => {
   const normalized = Array.isArray(links)
     ? links.map((item) => ({
@@ -95,6 +114,20 @@ const normalizeLinks = (links) => {
   return normalized.length ? normalized : [{ label: '', url: '' }];
 };
 
+const normalizeLicenseItems = (items) => {
+  const list = Array.isArray(items)
+    ? items.map((item) => ({
+        title: String(item?.title || ''),
+        description: String(item?.description || ''),
+        imageUrl: String(item?.imageUrl || ''),
+        verifyUrl: String(item?.verifyUrl || ''),
+        imageFile: null,
+        imagePreview: ''
+      }))
+    : [];
+  return list.length ? list : [{ title: '', description: '', imageUrl: '', verifyUrl: '', imageFile: null, imagePreview: '' }];
+};
+
 const currentPreview = computed(() => previewUrl.value || form.value.siteLogoUrl || '');
 
 const clearPreview = () => {
@@ -102,6 +135,16 @@ const clearPreview = () => {
     URL.revokeObjectURL(previewUrl.value);
   }
   previewUrl.value = '';
+};
+
+const clearLicenseItemPreview = (item) => {
+  if (item?.imagePreview && item.imagePreview.startsWith('blob:')) {
+    URL.revokeObjectURL(item.imagePreview);
+  }
+};
+
+const clearLicensePreviews = () => {
+  (form.value.licensesContent?.items || []).forEach(clearLicenseItemPreview);
 };
 
 const buildFacilityLabel = (item) => {
@@ -127,6 +170,7 @@ const loadFacilityOptions = async () => {
 
 const applySettings = (settings) => {
   clearPreview();
+  clearLicensePreviews();
   form.value = {
     siteName: settings.siteName || '',
     siteDescription: settings.siteDescription || '',
@@ -158,7 +202,25 @@ const applySettings = (settings) => {
     homeMetaKeywords: settings.homeMetaKeywords || '',
     marketMetaTitle: settings.marketMetaTitle || '',
     marketMetaDescription: settings.marketMetaDescription || '',
-    marketMetaKeywords: settings.marketMetaKeywords || ''
+    marketMetaKeywords: settings.marketMetaKeywords || '',
+    aboutUsContent: {
+      heroTitle: settings.aboutUsContent?.heroTitle || '',
+      heroSubtitle: settings.aboutUsContent?.heroSubtitle || '',
+      description: settings.aboutUsContent?.description || '',
+      mission: settings.aboutUsContent?.mission || '',
+      vision: settings.aboutUsContent?.vision || '',
+      values: settings.aboutUsContent?.values || '',
+      contactInfo: settings.aboutUsContent?.contactInfo || '',
+      promiseCards: normalizeCardList(settings.aboutUsContent?.promiseCards, 3),
+      principleCards: normalizeCardList(settings.aboutUsContent?.principleCards, 3)
+    },
+    welcomeMessageCustomer: settings.welcomeMessageCustomer || '',
+    welcomeMessageBroker: settings.welcomeMessageBroker || '',
+    licensesContent: {
+      heroTitle: settings.licensesContent?.heroTitle || '',
+      heroDescription: settings.licensesContent?.heroDescription || '',
+      items: normalizeLicenseItems(settings.licensesContent?.items)
+    }
   };
 };
 
@@ -183,6 +245,19 @@ const handleLogoChange = (event) => {
   }
 };
 
+const handleLicenseImageChange = (index, event) => {
+  const item = form.value.licensesContent.items[index];
+  if (!item) return;
+
+  clearLicenseItemPreview(item);
+
+  const [file] = event.target.files || [];
+  item.imageFile = file || null;
+  item.imagePreview = file ? URL.createObjectURL(file) : '';
+};
+
+const resolveLicenseImagePreview = (item) => item?.imagePreview || item?.imageUrl || '';
+
 const addLink = (field) => {
   form.value.footerContent[field].push({ label: '', url: '' });
 };
@@ -193,6 +268,39 @@ const removeLink = (field, index) => {
     return;
   }
   form.value.footerContent[field].splice(index, 1);
+};
+
+const addAboutCard = (field) => {
+  form.value.aboutUsContent[field].push({ title: '', text: '' });
+};
+
+const removeAboutCard = (field, index) => {
+  if (form.value.aboutUsContent[field].length <= 1) {
+    form.value.aboutUsContent[field][0] = { title: '', text: '' };
+    return;
+  }
+  form.value.aboutUsContent[field].splice(index, 1);
+};
+
+const addLicenseItem = () => {
+  form.value.licensesContent.items.push({
+    title: '',
+    description: '',
+    imageUrl: '',
+    verifyUrl: '',
+    imageFile: null,
+    imagePreview: ''
+  });
+};
+
+const removeLicenseItem = (index) => {
+  if (form.value.licensesContent.items.length <= 1) {
+    clearLicenseItemPreview(form.value.licensesContent.items[0]);
+    form.value.licensesContent.items[0] = { title: '', description: '', imageUrl: '', verifyUrl: '', imageFile: null, imagePreview: '' };
+    return;
+  }
+  clearLicenseItemPreview(form.value.licensesContent.items[index]);
+  form.value.licensesContent.items.splice(index, 1);
 };
 
 const submit = async () => {
@@ -220,6 +328,29 @@ const submit = async () => {
     payload.append('marketMetaTitle', form.value.marketMetaTitle || '');
     payload.append('marketMetaDescription', form.value.marketMetaDescription || '');
     payload.append('marketMetaKeywords', form.value.marketMetaKeywords || '');
+    payload.append('aboutUsContent', JSON.stringify(form.value.aboutUsContent));
+    payload.append('welcomeMessageCustomer', form.value.welcomeMessageCustomer || '');
+    payload.append('welcomeMessageBroker', form.value.welcomeMessageBroker || '');
+    const licensesImageIndexes = [];
+    const licensesContentPayload = {
+      heroTitle: String(form.value.licensesContent.heroTitle || '').trim(),
+      heroDescription: String(form.value.licensesContent.heroDescription || '').trim(),
+      items: form.value.licensesContent.items.map((item, index) => {
+        if (item.imageFile) {
+          payload.append('licensesImages', item.imageFile);
+          licensesImageIndexes.push(index);
+        }
+
+        return {
+          title: String(item.title || '').trim(),
+          description: String(item.description || '').trim(),
+          imageUrl: String(item.imageUrl || '').trim(),
+          verifyUrl: String(item.verifyUrl || '').trim()
+        };
+      })
+    };
+    payload.append('licensesContent', JSON.stringify(licensesContentPayload));
+    payload.append('licensesImageIndexes', JSON.stringify(licensesImageIndexes));
     if (form.value.siteLogoFile) {
       payload.append('siteLogo', form.value.siteLogoFile);
     }
@@ -234,7 +365,10 @@ const submit = async () => {
 };
 
 onMounted(load);
-onBeforeUnmount(clearPreview);
+onBeforeUnmount(() => {
+  clearPreview();
+  clearLicensePreviews();
+});
 </script>
 
 <template>
@@ -295,6 +429,7 @@ onBeforeUnmount(clearPreview);
                   <input v-model="form.decreaseValidity" class="form-control" type="number" min="0" />
                   <span class="input-group-text">تومان</span>
                 </div>
+                <small v-if="Number(form.decreaseValidity)" class="text-muted d-block mt-1">{{ formatMoney(form.decreaseValidity) }}</small>
               </div>
 
               <div class="col-12 col-lg-6">
@@ -317,7 +452,7 @@ onBeforeUnmount(clearPreview);
                 <textarea v-model="form.siteDescription" class="form-control" rows="3"></textarea>
               </div>
 
-              <div class="col-12 col-lg-6">
+              <!-- <div class="col-12 col-lg-6">
                 <label class="toggle-card">
                   <input v-model="form.loanAdminConfirm1" type="checkbox" class="toggle-input" />
                   <span class="toggle-track"><span class="toggle-thumb"></span></span>
@@ -331,7 +466,7 @@ onBeforeUnmount(clearPreview);
                   <span class="toggle-track"><span class="toggle-thumb"></span></span>
                   <span>تایید دوم مدیریت برای وام</span>
                 </label>
-              </div>
+              </div> -->
             </div>
           </section>
 
@@ -522,6 +657,171 @@ onBeforeUnmount(clearPreview);
             </div>
           </section>
 
+          <section v-if="activeTab === 'about'" class="settings-section-card">
+            <div class="settings-section-head">
+              <div>
+                <h2 class="settings-section-title">درباره ما</h2>
+                <p class="settings-section-subtitle">محتوای ساختاریافته صفحه درباره ما در وب‌سایت</p>
+              </div>
+            </div>
+            <div class="row g-3">
+              <div class="col-12 col-lg-6">
+                <label class="form-label form-label-optional"><i class="fa-solid fa-heading me-1"></i> عنوان اصلی</label>
+                <input v-model="form.aboutUsContent.heroTitle" class="form-control" maxlength="200" placeholder="مثلا: درباره دیجی وام" />
+              </div>
+              <div class="col-12 col-lg-6">
+                <label class="form-label form-label-optional"><i class="fa-solid fa-quote-right me-1"></i> زیرعنوان</label>
+                <input v-model="form.aboutUsContent.heroSubtitle" class="form-control" maxlength="500" placeholder="یک جمله کوتاه معرفی..." />
+              </div>
+              <div class="col-12">
+                <label class="form-label form-label-optional"><i class="fa-solid fa-align-right me-1"></i> توضیحات کلی</label>
+                <textarea v-model="form.aboutUsContent.description" class="form-control" rows="4" maxlength="5000" placeholder="درباره مجموعه بنویسید..."></textarea>
+              </div>
+              <div class="col-12 col-lg-6">
+                <label class="form-label form-label-optional"><i class="fa-solid fa-bullseye me-1"></i> ماموریت ما</label>
+                <textarea v-model="form.aboutUsContent.mission" class="form-control" rows="3" maxlength="3000" placeholder="ماموریت سازمان..."></textarea>
+              </div>
+              <div class="col-12 col-lg-6">
+                <label class="form-label form-label-optional"><i class="fa-solid fa-eye me-1"></i> چشم‌انداز</label>
+                <textarea v-model="form.aboutUsContent.vision" class="form-control" rows="3" maxlength="3000" placeholder="چشم‌انداز آینده..."></textarea>
+              </div>
+              <div class="col-12">
+                <label class="form-label form-label-optional"><i class="fa-solid fa-gem me-1"></i> ارزش‌های ما</label>
+                <textarea v-model="form.aboutUsContent.values" class="form-control" rows="3" maxlength="3000" placeholder="ارزش‌ها و اصول کلیدی مجموعه..."></textarea>
+              </div>
+              <div class="col-12">
+                <label class="form-label form-label-optional"><i class="fa-solid fa-phone me-1"></i> اطلاعات تماس</label>
+                <textarea v-model="form.aboutUsContent.contactInfo" class="form-control" rows="3" maxlength="2000" placeholder="آدرس، تلفن، ایمیل و..."></textarea>
+              </div>
+
+              <div class="col-12 mt-4">
+                <h3 class="settings-section-title" style="font-size: 16px;">
+                  <i class="fa-solid fa-stars me-1"></i> باکس‌های وعده‌ها (مسیر ساده‌تر، همراهی واقعی، ...)
+                </h3>
+                <p class="settings-section-subtitle">خالی بگذارید تا مقادیر پیش‌فرض نمایش داده شود.</p>
+              </div>
+              <div v-for="(card, ci) in form.aboutUsContent.promiseCards" :key="'promise-' + ci" class="col-12">
+                <div class="d-flex align-items-center gap-2 mb-1">
+                  <span class="badge bg-secondary">{{ ci + 1 }}</span>
+                  <input v-model="card.title" class="form-control form-control-sm" maxlength="100" placeholder="عنوان باکس..." />
+                  <button type="button" class="btn btn-sm btn-outline-danger" @click="removeAboutCard('promiseCards', ci)" title="حذف">
+                    <i class="fa-solid fa-trash-can"></i>
+                  </button>
+                </div>
+                <textarea v-model="card.text" class="form-control form-control-sm" rows="2" maxlength="500" placeholder="متن باکس..."></textarea>
+              </div>
+              <div class="col-12">
+                <button type="button" class="btn btn-sm btn-outline-primary" @click="addAboutCard('promiseCards')">
+                  <i class="fa-solid fa-plus me-1"></i> افزودن باکس وعده
+                </button>
+              </div>
+
+              <div class="col-12 mt-4">
+                <h3 class="settings-section-title" style="font-size: 16px;">
+                  <i class="fa-solid fa-lightbulb me-1"></i> باکس‌های اصول راهنما (چطور فکر می‌کنیم و چطور اجرا می‌کنیم)
+                </h3>
+                <p class="settings-section-subtitle">خالی بگذارید تا از ارزش‌های بالا یا مقادیر پیش‌فرض استفاده شود.</p>
+              </div>
+              <div v-for="(card, ci) in form.aboutUsContent.principleCards" :key="'principle-' + ci" class="col-12">
+                <div class="d-flex align-items-center gap-2 mb-1">
+                  <span class="badge bg-secondary">{{ ci + 1 }}</span>
+                  <input v-model="card.title" class="form-control form-control-sm" maxlength="100" placeholder="عنوان اصل..." />
+                  <button type="button" class="btn btn-sm btn-outline-danger" @click="removeAboutCard('principleCards', ci)" title="حذف">
+                    <i class="fa-solid fa-trash-can"></i>
+                  </button>
+                </div>
+                <textarea v-model="card.text" class="form-control form-control-sm" rows="2" maxlength="500" placeholder="توضیح اصل..."></textarea>
+              </div>
+              <div class="col-12">
+                <button type="button" class="btn btn-sm btn-outline-primary" @click="addAboutCard('principleCards')">
+                  <i class="fa-solid fa-plus me-1"></i> افزودن اصل راهنما
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section v-if="activeTab === 'licenses'" class="settings-section-card">
+            <div class="settings-section-head">
+              <div>
+                <h2 class="settings-section-title">صفحه مجوزها</h2>
+                <p class="settings-section-subtitle">عنوان، توضیح و کارت های مجوز صفحه عمومی وب سایت را مدیریت کنید.</p>
+              </div>
+            </div>
+
+            <div class="row g-3">
+              <div class="col-12 col-lg-6">
+                <label class="form-label form-label-optional">عنوان اصلی صفحه</label>
+                <input v-model="form.licensesContent.heroTitle" class="form-control" maxlength="200" placeholder="مجوزها و گواهی نامه ها" />
+              </div>
+              <div class="col-12">
+                <label class="form-label form-label-optional">توضیحات اصلی</label>
+                <textarea v-model="form.licensesContent.heroDescription" class="form-control" rows="3" maxlength="2000" placeholder="توضیح کوتاه درباره اعتبار مجوزها..."></textarea>
+              </div>
+
+              <div class="col-12 d-flex justify-content-between align-items-center mt-2">
+                <h3 class="settings-section-title" style="font-size: 16px; margin: 0;">کارت های مجوز</h3>
+                <button type="button" class="btn btn-sm btn-outline-primary" @click="addLicenseItem">
+                  <i class="fa-solid fa-plus me-1"></i> افزودن مجوز
+                </button>
+              </div>
+
+              <div v-for="(item, index) in form.licensesContent.items" :key="`license-${index}`" class="col-12">
+                <div class="inline-card-editor">
+                  <div class="inline-card-editor-head">
+                    <h3>مجوز {{ index + 1 }}</h3>
+                    <button type="button" class="btn btn-sm btn-outline-danger" @click="removeLicenseItem(index)">
+                      <i class="fa-solid fa-trash-can me-1"></i> حذف
+                    </button>
+                  </div>
+
+                  <div class="row g-3">
+                    <div class="col-12 col-lg-4">
+                      <label class="form-label form-label-optional">عنوان مجوز</label>
+                      <input v-model="item.title" class="form-control" maxlength="200" placeholder="مثلا: پروانه کسب" />
+                    </div>
+                    <div class="col-12 col-lg-4">
+                      <label class="form-label form-label-optional">تصویر مجوز</label>
+                      <input type="file" class="form-control" accept="image/*" @change="handleLicenseImageChange(index, $event)" />
+                    </div>
+                    <div class="col-12 col-lg-4">
+                      <label class="form-label form-label-optional">لینک استعلام</label>
+                      <input v-model="item.verifyUrl" class="form-control" maxlength="1000" placeholder="https://..." />
+                    </div>
+                    <div class="col-12">
+                      <label class="form-label form-label-optional">توضیحات مجوز</label>
+                      <textarea v-model="item.description" class="form-control" rows="2" maxlength="1000" placeholder="توضیح کوتاه درباره این مجوز..."></textarea>
+                    </div>
+                    <div class="col-12">
+                      <div class="license-image-preview-box">
+                        <img v-if="resolveLicenseImagePreview(item)" :src="resolveLicenseImagePreview(item)" :alt="item.title || 'مجوز'" class="license-image-preview" />
+                        <span v-else class="license-image-placeholder">هنوز تصویری انتخاب نشده است</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section v-if="activeTab === 'welcome'" class="settings-section-card">
+            <div class="settings-section-head">
+              <div>
+                <h2 class="settings-section-title">پیام خوش‌آمدگویی</h2>
+                <p class="settings-section-subtitle">پیامی که پس از اولین ثبت‌نام مشتری یا کارگزار به صورت اعلان برای آن‌ها ارسال می‌شود.</p>
+              </div>
+            </div>
+            <div class="row g-3">
+              <div class="col-12">
+                <label class="form-label form-label-optional"><i class="fa-solid fa-user me-1"></i> پیام خوش‌آمدگویی مشتری</label>
+                <textarea v-model="form.welcomeMessageCustomer" class="form-control" rows="4" maxlength="2000" placeholder="متن پیام خوش‌آمدگویی برای مشتریان جدید..."></textarea>
+              </div>
+              <div class="col-12">
+                <label class="form-label form-label-optional"><i class="fa-solid fa-user-tie me-1"></i> پیام خوش‌آمدگویی کارگزار</label>
+                <textarea v-model="form.welcomeMessageBroker" class="form-control" rows="4" maxlength="2000" placeholder="متن پیام خوش‌آمدگویی برای کارگزاران جدید..."></textarea>
+              </div>
+            </div>
+          </section>
+
           <section v-if="activeTab === 'maintenance'" class="settings-section-card">
             <div class="settings-section-head">
               <div>
@@ -568,262 +868,4 @@ onBeforeUnmount(clearPreview);
   </div>
 </template>
 
-<style scoped>
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-bottom: 20px;
-}
-
-.page-header-info {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.page-header-icon {
-  width: 46px;
-  height: 46px;
-  border-radius: 12px;
-  background: var(--admin-primary-light);
-  color: var(--admin-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-}
-
-.page-title {
-  font-size: 18px;
-  font-weight: 700;
-  margin: 0;
-}
-
-.page-subtitle {
-  font-size: 13px;
-  color: var(--admin-muted);
-  margin: 2px 0 0;
-}
-
-.settings-shell {
-  display: grid;
-  gap: 18px;
-}
-
-.settings-tabs {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.settings-tab {
-  border: 1px solid var(--admin-border);
-  background: var(--admin-surface-soft);
-  color: var(--admin-text);
-  border-radius: 14px;
-  padding: 11px 16px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 700;
-  transition: 0.2s ease;
-}
-
-.settings-tab.active {
-  background: var(--admin-primary);
-  border-color: var(--admin-primary);
-  color: #fff;
-  box-shadow: 0 16px 26px rgba(53, 98, 241, 0.16);
-}
-
-.settings-grid {
-  display: grid;
-  gap: 18px;
-}
-
-.settings-section-card {
-  border: 1px solid var(--admin-border);
-  border-radius: 18px;
-  background: var(--admin-surface-soft);
-  padding: 18px;
-}
-
-.helper-text {
-  margin: 8px 0 0;
-  color: var(--admin-muted);
-  font-size: 12px;
-}
-
-.settings-section-head {
-  margin-bottom: 16px;
-}
-
-.settings-section-head-split {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-}
-
-.settings-section-title {
-  margin: 0 0 6px;
-  font-size: 16px;
-  font-weight: 800;
-}
-
-.toggle-card-danger {
-  border-color: rgba(185, 28, 28, 0.14);
-  background: linear-gradient(180deg, rgba(255, 245, 245, 0.94), rgba(255, 250, 250, 0.98));
-}
-
-.settings-section-subtitle {
-  margin: 0;
-  color: var(--admin-muted);
-  font-size: 13px;
-}
-
-.logo-preview-box {
-  min-height: 180px;
-  border: 2px dashed var(--admin-border);
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--admin-surface-soft);
-  overflow: hidden;
-}
-
-.logo-preview-img {
-  max-width: 100%;
-  max-height: 180px;
-  object-fit: contain;
-}
-
-.logo-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  color: var(--admin-muted);
-}
-
-.logo-placeholder i {
-  font-size: 28px;
-  opacity: 0.4;
-}
-
-.toggle-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-  border: 1px solid var(--admin-border);
-  border-radius: 12px;
-  background: var(--admin-surface);
-  cursor: pointer;
-  transition: border-color 0.2s;
-}
-
-.toggle-card:has(.toggle-input:checked) {
-  border-color: var(--admin-primary);
-}
-
-.toggle-input {
-  display: none;
-}
-
-.toggle-track {
-  width: 40px;
-  height: 22px;
-  border-radius: 11px;
-  background: var(--admin-border);
-  position: relative;
-  transition: background 0.2s;
-  flex-shrink: 0;
-}
-
-.toggle-thumb {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: #fff;
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  transition: transform 0.2s;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
-}
-
-.toggle-input:checked + .toggle-track {
-  background: var(--admin-primary);
-}
-
-.toggle-input:checked + .toggle-track .toggle-thumb {
-  transform: translateX(-18px);
-}
-
-.helper-text {
-  margin: 8px 0 0;
-  font-size: 12px;
-  color: var(--admin-muted);
-}
-
-.inline-card-editor {
-  border: 1px solid var(--admin-border);
-  border-radius: 16px;
-  background: var(--admin-surface);
-  padding: 16px;
-}
-
-.inline-card-editor-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 14px;
-}
-
-.inline-card-editor-head h3 {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 800;
-}
-
-.link-editor-row {
-  display: grid;
-  grid-template-columns: 1fr 1.2fr auto;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
-.link-editor-row:last-child {
-  margin-bottom: 0;
-}
-
-.link-editor-remove {
-  min-width: 44px;
-}
-
-.seo-sections {
-  display: grid;
-  gap: 16px;
-}
-
-@media (max-width: 767px) {
-  .settings-tab {
-    flex: 1 1 calc(50% - 10px);
-    justify-content: center;
-  }
-
-  .link-editor-row {
-    grid-template-columns: 1fr;
-  }
-
-  .link-editor-remove {
-    width: 100%;
-  }
-}
-</style>
+<style scoped src="./styles/SettingsView.css"></style>

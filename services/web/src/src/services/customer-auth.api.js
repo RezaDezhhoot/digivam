@@ -3,6 +3,7 @@ export const API_BASE = import.meta.env.VITE_API_BASE_URL || `${BACKEND_BASE}/ap
 
 export const CUSTOMER_TOKEN_KEY = 'customer_token';
 export const CUSTOMER_PROFILE_KEY = 'customer_profile';
+export const ACCOUNT_SUSPENDED_EVENT = 'app-account-suspended';
 
 export const emitMaintenanceEvent = (payload = {}) => {
   if (typeof window === 'undefined') {
@@ -34,12 +35,43 @@ export const emitServiceUnavailableEvent = (payload = {}) => {
   );
 };
 
+export const emitAccountSuspendedEvent = (payload = {}) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.dispatchEvent(
+    new CustomEvent(ACCOUNT_SUSPENDED_EVENT, {
+      detail: {
+        panel: payload.panel || null,
+        message: payload.message || 'حساب شما توسط ادمین معلق شده است',
+        reason: payload.reason || ''
+      }
+    })
+  );
+};
+
+const persistSuspendedCustomerProfile = (reason = '', message = '') => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const profile = readStoredCustomerProfile() || {};
+  localStorage.setItem(
+    CUSTOMER_PROFILE_KEY,
+    JSON.stringify({
+      ...profile,
+      isSuspended: true,
+      suspendReason: reason || profile.suspendReason || message || ''
+    })
+  );
+};
+
 export const fetchJson = async (url, options = {}) => {
   let response;
   try {
     response = await fetch(url, options);
   } catch (error) {
-    emitServiceUnavailableEvent({ panel: 'customer' });
     throw error;
   }
 
@@ -49,10 +81,11 @@ export const fetchJson = async (url, options = {}) => {
     const error = new Error(data.message || 'درخواست با خطا مواجه شد');
     error.status = response.status;
     error.data = data;
-    if (response.status === 503) {
+    if (response.status === 423 && data.code === 'ACCOUNT_SUSPENDED') {
+      persistSuspendedCustomerProfile(data.reason, error.message);
+      emitAccountSuspendedEvent({ panel: data.panel || 'customer', message: error.message, reason: data.reason || '' });
+    } else if (response.status === 503) {
       emitMaintenanceEvent({ panel: data.panel, message: error.message });
-    } else if (response.status >= 500) {
-      emitServiceUnavailableEvent({ panel: data.panel || 'customer', message: error.message });
     }
     throw error;
   }

@@ -48,16 +48,24 @@ import {
   updateAdminDeal
 } from '../controllers/admin-deal.controller.js';
 import {
+  getAdminDealMessages,
+  sendAdminDealMessage,
+  getAdminUnreadCount
+} from '../controllers/deal-chat.controller.js';
+import {
   createAdmin,
   deleteAdmin,
   deleteBroker,
   deleteCustomer,
   getAdminSummary,
+  getAdminDealAnalytics,
   getPageViews,
   listAdmins,
   listBrokers,
   listCustomers,
   updateAdmin,
+  updateBrokerSuspension,
+  updateCustomerSuspension,
   updateBrokerVerifyLevel
 } from '../controllers/admin-panel.controller.js';
 import { getAdminSettings, updateAdminSettings } from '../controllers/admin-settings.controller.js';
@@ -84,6 +92,8 @@ import {
   createAdminValidator,
   customerIdValidator,
   updateAdminValidator,
+  updateBrokerSuspensionValidator,
+  updateCustomerSuspensionValidator,
   updateBrokerLevelValidator
 } from '../validators/admin-panel.validator.js';
 import { createAdminNotificationValidator } from '../validators/admin-notification.validator.js';
@@ -99,6 +109,12 @@ import {
   customerValidationIdValidator,
   updateCustomerValidationValidator
 } from '../validators/admin-customer-validation.validator.js';
+import { createTutorial, deleteTutorial, listTutorials, updateTutorial } from '../controllers/admin-tutorial.controller.js';
+import { tutorialIdValidator, upsertTutorialValidator } from '../validators/admin-tutorial.validator.js';
+import { listAdminWithdrawals, updateAdminWithdrawal } from '../controllers/admin-withdrawal.controller.js';
+import { adminBrokerWalletDeposit, adminBrokerWalletWithdraw } from '../controllers/admin-wallet.controller.js';
+import { updateAdminWithdrawalValidator } from '../validators/admin-withdrawal.validator.js';
+import { adminBrokerWalletOperationValidator } from '../validators/admin-wallet.validator.js';
 
 export const adminPanelRouter = Router();
 
@@ -106,20 +122,32 @@ adminPanelRouter.use(requireAuth('admin'));
 
 adminPanelRouter.get('/summary', getAdminSummary);
 adminPanelRouter.get('/deals/summary', getAdminDealSummary);
+adminPanelRouter.get('/deals/analytics', (req, res, next) => {
+  const period = String(req.query.period || 'daily').toLowerCase();
+  if (!['daily', 'weekly', 'monthly', 'yearly'].includes(period)) {
+    return res.status(422).json({ message: 'دوره نامعتبر است' });
+  }
+  return next();
+}, getAdminDealAnalytics);
 adminPanelRouter.get('/deals', listAdminDeals);
 adminPanelRouter.get('/deals/:id', adminDealIdValidator, validateRequest, getAdminDeal);
 adminPanelRouter.patch('/deals/:id', updateAdminDealValidator, validateRequest, updateAdminDeal);
 adminPanelRouter.post('/deals/:id/refresh-contract', adminDealIdValidator, validateRequest, refreshAdminDealContract);
 adminPanelRouter.delete('/deals/:id/signature/:role', adminDealIdValidator, validateRequest, removeAdminDealSignature);
+adminPanelRouter.get('/deals/:id/messages', adminDealIdValidator, validateRequest, getAdminDealMessages);
+adminPanelRouter.post('/deals/:id/messages', adminDealIdValidator, validateRequest, sendAdminDealMessage);
+adminPanelRouter.get('/deals/:id/messages/unread', adminDealIdValidator, validateRequest, getAdminUnreadCount);
 adminPanelRouter.get('/page-views', getPageViews);
 adminPanelRouter.get('/notifications/options', getAdminNotificationOptions);
 adminPanelRouter.get('/notifications', listAdminNotifications);
 adminPanelRouter.post('/notifications', createAdminNotificationValidator, validateRequest, createAdminNotification);
 adminPanelRouter.get('/brokers', listBrokers);
 adminPanelRouter.patch('/brokers/:id/verify-level', updateBrokerLevelValidator, validateRequest, updateBrokerVerifyLevel);
+adminPanelRouter.patch('/brokers/:id/suspension', updateBrokerSuspensionValidator, validateRequest, updateBrokerSuspension);
 adminPanelRouter.delete('/brokers/:id', brokerIdValidator, validateRequest, deleteBroker);
 
 adminPanelRouter.get('/customers', listCustomers);
+adminPanelRouter.patch('/customers/:id/suspension', updateCustomerSuspensionValidator, validateRequest, updateCustomerSuspension);
 adminPanelRouter.delete('/customers/:id', customerIdValidator, validateRequest, deleteCustomer);
 
 adminPanelRouter.get('/admins', listAdmins);
@@ -128,7 +156,16 @@ adminPanelRouter.put('/admins/:id', updateAdminValidator, validateRequest, updat
 adminPanelRouter.delete('/admins/:id', adminIdValidator, validateRequest, deleteAdmin);
 
 adminPanelRouter.get('/settings', getAdminSettings);
-adminPanelRouter.put('/settings', upload.single('siteLogo'), updateSettingsValidator, validateRequest, updateAdminSettings);
+adminPanelRouter.put(
+  '/settings',
+  upload.fields([
+    { name: 'siteLogo', maxCount: 1 },
+    { name: 'licensesImages', maxCount: 30 }
+  ]),
+  updateSettingsValidator,
+  validateRequest,
+  updateAdminSettings
+);
 
 adminPanelRouter.get('/guarantees', listGuarantees);
 adminPanelRouter.post('/guarantees', upsertGuaranteeValidator, validateRequest, createGuarantee);
@@ -199,3 +236,43 @@ adminPanelRouter.put(
   updateAdminCustomerValidation
 );
 adminPanelRouter.delete('/customer-validations/:id', customerValidationIdValidator, validateRequest, deleteAdminCustomerValidation);
+
+adminPanelRouter.get('/tutorials', listTutorials);
+adminPanelRouter.post(
+  '/tutorials',
+  uploadMedia.fields([{ name: 'video', maxCount: 1 }]),
+  upsertTutorialValidator,
+  validateRequest,
+  createTutorial
+);
+adminPanelRouter.put(
+  '/tutorials/:id',
+  uploadMedia.fields([{ name: 'video', maxCount: 1 }]),
+  [...tutorialIdValidator, ...upsertTutorialValidator],
+  validateRequest,
+  updateTutorial
+);
+adminPanelRouter.delete('/tutorials/:id', tutorialIdValidator, validateRequest, deleteTutorial);
+
+adminPanelRouter.get('/withdrawals', listAdminWithdrawals);
+adminPanelRouter.put(
+  '/withdrawals/:id',
+  upload.single('adminFile'),
+  updateAdminWithdrawalValidator,
+  validateRequest,
+  updateAdminWithdrawal
+);
+
+// Admin broker wallet operations
+adminPanelRouter.post(
+  '/brokers/:id/wallet/deposit',
+  adminBrokerWalletOperationValidator,
+  validateRequest,
+  adminBrokerWalletDeposit
+);
+adminPanelRouter.post(
+  '/brokers/:id/wallet/withdraw',
+  adminBrokerWalletOperationValidator,
+  validateRequest,
+  adminBrokerWalletWithdraw
+);

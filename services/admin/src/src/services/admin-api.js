@@ -73,6 +73,23 @@ export const removeAdminDealSignature = (id, role) =>
     headers: authHeaders()
   });
 
+export const getAdminDealMessages = (id) =>
+  fetchJson(`${API_BASE}/admin/panel/deals/${id}/messages`, {
+    headers: authHeaders()
+  });
+
+export const sendAdminDealMessage = (id, payload) =>
+  fetchJson(`${API_BASE}/admin/panel/deals/${id}/messages`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(payload)
+  });
+
+export const getAdminDealUnreadCount = (id) =>
+  fetchJson(`${API_BASE}/admin/panel/deals/${id}/messages/unread`, {
+    headers: authHeaders()
+  });
+
 export const getPageViews = (query = '') =>
   fetchJson(`${API_BASE}/admin/panel/page-views${query}`, {
     headers: authHeaders()
@@ -107,6 +124,13 @@ export const updateBrokerLevel = (id, verifyLevel) =>
     body: JSON.stringify({ verifyLevel })
   });
 
+export const updateBrokerSuspension = (id, payload) =>
+  fetchJson(`${API_BASE}/admin/panel/brokers/${id}/suspension`, {
+    method: 'PATCH',
+    headers: authHeaders(),
+    body: JSON.stringify(payload)
+  });
+
 export const deleteBroker = (id) =>
   fetchJson(`${API_BASE}/admin/panel/brokers/${id}`, {
     method: 'DELETE',
@@ -116,6 +140,13 @@ export const deleteBroker = (id) =>
 export const getCustomers = (query = '') =>
   fetchJson(`${API_BASE}/admin/panel/customers${query}`, {
     headers: authHeaders()
+  });
+
+export const updateCustomerSuspension = (id, payload) =>
+  fetchJson(`${API_BASE}/admin/panel/customers/${id}/suspension`, {
+    method: 'PATCH',
+    headers: authHeaders(),
+    body: JSON.stringify(payload)
   });
 
 export const deleteCustomer = (id) =>
@@ -355,5 +386,61 @@ export const updateCustomerValidation = (id, payload) =>
 export const deleteCustomerValidation = (id) =>
   fetchJson(`${API_BASE}/admin/panel/customer-validations/${id}`, {
     method: 'DELETE',
+    headers: authHeaders()
+  });
+
+export const getTutorials = (query = '') =>
+  fetchJson(`${API_BASE}/admin/panel/tutorials${query}`, {
+    headers: authHeaders()
+  });
+
+export const createTutorial = (formData) =>
+  fetchJson(`${API_BASE}/admin/panel/tutorials`, {
+    method: 'POST',
+    headers: tokenHeaders(),
+    body: formData
+  });
+
+export const updateTutorial = (id, formData) =>
+  fetchJson(`${API_BASE}/admin/panel/tutorials/${id}`, {
+    method: 'PUT',
+    headers: tokenHeaders(),
+    body: formData
+  });
+
+export const deleteTutorial = (id) =>
+  fetchJson(`${API_BASE}/admin/panel/tutorials/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders()
+  });
+
+export const getWithdrawals = (query = '') =>
+  fetchJson(`${API_BASE}/admin/panel/withdrawals${query}`, {
+    headers: authHeaders()
+  });
+
+export const updateWithdrawal = (id, formData) =>
+  fetchJson(`${API_BASE}/admin/panel/withdrawals/${id}`, {
+    method: 'PUT',
+    headers: tokenHeaders(),
+    body: formData
+  });
+
+export const adminBrokerWalletDeposit = (brokerId, payload) =>
+  fetchJson(`${API_BASE}/admin/panel/brokers/${brokerId}/wallet/deposit`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(payload)
+  });
+
+export const adminBrokerWalletWithdraw = (brokerId, payload) =>
+  fetchJson(`${API_BASE}/admin/panel/brokers/${brokerId}/wallet/withdraw`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(payload)
+  });
+
+export const getDealAnalytics = (query = '') =>
+  fetchJson(`${API_BASE}/admin/panel/deals/analytics${query}`, {
     headers: authHeaders()
   });

@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { API_BASE } from './services/broker-auth.api.js';
 
 const initialized = ref(false);
+const siteLogoUrl = ref('');
 const serviceState = ref({
   active: false,
   mode: 'maintenance',
@@ -35,7 +36,16 @@ const clearServiceState = () => {
 
 const checkServiceState = async () => {
   try {
-    const response = await fetch(`${API_BASE}/status?panel=broker`);
+    const [response, configRes] = await Promise.all([
+      fetch(`${API_BASE}/status?panel=broker`),
+      !siteLogoUrl.value ? fetch(`${API_BASE}/web/site-config`).catch(() => null) : Promise.resolve(null)
+    ]);
+
+    if (configRes?.ok) {
+      const configData = await configRes.json().catch(() => ({}));
+      if (configData.siteLogoUrl) siteLogoUrl.value = configData.siteLogoUrl;
+    }
+
     const data = await response.json().catch(() => ({}));
 
     if (response.status === 503) {
@@ -93,25 +103,39 @@ onBeforeUnmount(() => {
   </div>
   <section v-else-if="serviceState.active" class="maintenance-shell">
     <div class="maintenance-card">
+      <img v-if="siteLogoUrl" :src="siteLogoUrl" alt="لوگو" class="maintenance-logo" />
       <div class="maintenance-illustration" aria-hidden="true">
-        <svg viewBox="0 0 240 240" role="presentation">
+        <svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="100" cy="100" r="90" fill="url(#brokerGrad)" opacity="0.08" />
+          <circle cx="100" cy="100" r="60" stroke="url(#brokerGrad)" stroke-width="3" stroke-dasharray="8 6" opacity="0.25" />
+          <rect x="72" y="62" width="56" height="68" rx="8" fill="#fff" stroke="url(#brokerGrad)" stroke-width="4" />
+          <path d="M100 48v14" stroke="url(#brokerGrad)" stroke-width="4" stroke-linecap="round" />
+          <circle cx="100" cy="44" r="6" fill="url(#brokerGrad)" opacity="0.5" />
+          <path d="M86 90h28" stroke="url(#brokerGrad)" stroke-width="3.5" stroke-linecap="round" />
+          <path d="M86 100h20" stroke="url(#brokerGrad)" stroke-width="3.5" stroke-linecap="round" opacity="0.5" />
+          <path d="M86 110h24" stroke="url(#brokerGrad)" stroke-width="3.5" stroke-linecap="round" opacity="0.3" />
+          <circle cx="100" cy="150" r="10" fill="url(#brokerGrad)" opacity="0.18" />
+          <path d="M96 148l3 3 5-6" stroke="url(#brokerGrad)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.6" />
           <defs>
-            <linearGradient id="brokerServiceGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <linearGradient id="brokerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stop-color="#b91c1c" />
               <stop offset="100%" stop-color="#7f1d1d" />
             </linearGradient>
           </defs>
-          <circle cx="120" cy="120" r="96" fill="url(#brokerServiceGrad)" opacity="0.12" />
-          <path d="M70 142h100" stroke="url(#brokerServiceGrad)" stroke-width="14" stroke-linecap="round" />
-          <path d="M92 84h56l24 24v42a18 18 0 0 1-18 18H86a18 18 0 0 1-18-18v-48a18 18 0 0 1 18-18Z" fill="#ffffff" stroke="url(#brokerServiceGrad)" stroke-width="10" />
-          <path d="M148 84v28h28" fill="none" stroke="url(#brokerServiceGrad)" stroke-width="10" stroke-linejoin="round" />
-          <circle cx="120" cy="186" r="10" fill="#b91c1c" />
         </svg>
       </div>
-      <span class="maintenance-kicker">{{ serviceState.mode === 'maintenance' ? '503 Service Unavailable' : 'Service Unavailable' }}</span>
+      <span class="maintenance-kicker">
+        <i class="maintenance-kicker-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </i>
+        {{ serviceState.mode === 'maintenance' ? 'در حال بروزرسانی' : 'عدم دسترسی' }}
+      </span>
       <h1>سرویس هم اکنون در دسترس نیست</h1>
       <p>{{ serviceState.message }}</p>
-      <button type="button" class="maintenance-retry" @click="retryLoading">تلاش مجدد</button>
+      <button type="button" class="maintenance-retry" @click="retryLoading">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        تلاش مجدد
+      </button>
     </div>
   </section>
   <router-view v-else v-slot="{ Component }">
@@ -121,119 +145,4 @@ onBeforeUnmount(() => {
   </router-view>
 </template>
 
-<style>
-.maintenance-shell,
-.maintenance-loader {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background:
-    radial-gradient(circle at top, rgba(185, 28, 28, 0.12), transparent 32%),
-    linear-gradient(180deg, #fff7f7, #fff1f2);
-}
-
-.maintenance-card {
-  width: min(100%, 560px);
-  padding: 34px 28px;
-  border-radius: 28px;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(185, 28, 28, 0.12);
-  box-shadow: 0 24px 60px rgba(127, 29, 29, 0.12);
-  text-align: center;
-}
-
-.maintenance-illustration {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 10px;
-}
-
-.maintenance-illustration svg {
-  width: 176px;
-  height: 176px;
-}
-
-.maintenance-kicker {
-  display: inline-flex;
-  align-items: center;
-  min-height: 30px;
-  padding: 0 12px;
-  border-radius: 999px;
-  background: rgba(185, 28, 28, 0.08);
-  color: #b91c1c;
-  font-size: 11px;
-  font-weight: 900;
-}
-
-.maintenance-card h1 {
-  margin: 18px 0 10px;
-  font-size: 28px;
-  font-weight: 900;
-  color: #111827;
-}
-
-.maintenance-card p,
-.maintenance-loader span:last-child {
-  margin: 0;
-  font-size: 15px;
-  line-height: 2;
-  color: #4b5563;
-}
-
-.maintenance-retry {
-  margin-top: 18px;
-  min-height: 46px;
-  padding: 0 18px;
-  border-radius: 16px;
-  border: 1px solid #b91c1c;
-  background: linear-gradient(135deg, #b91c1c, #7f1d1d);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 900;
-}
-
-.maintenance-loader {
-  gap: 10px;
-  color: #b91c1c;
-  font-weight: 800;
-}
-
-.maintenance-loader__dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: currentColor;
-  animation: maintenance-pulse 0.8s ease-in-out infinite alternate;
-}
-
-.fade-slide-enter-active,
-.fade-slide-leave-active {
-  transition: opacity 0.25s ease, transform 0.25s ease;
-}
-.fade-slide-enter-from {
-  opacity: 0;
-  transform: translateY(12px);
-}
-.fade-slide-leave-to {
-  opacity: 0;
-  transform: translateY(-8px);
-}
-
-.swal-rtl {
-  direction: rtl;
-  font-family: 'Vazirmatn', Tahoma, sans-serif;
-}
-
-@keyframes maintenance-pulse {
-  from {
-    transform: scale(0.8);
-    opacity: 0.45;
-  }
-  to {
-    transform: scale(1.25);
-    opacity: 1;
-  }
-}
-</style>
+<style src="./styles/App.css"></style>

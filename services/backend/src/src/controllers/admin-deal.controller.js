@@ -1,7 +1,7 @@
 import { sequelize } from '../config/database.js';
 import { clearDealSignature, createDealSummary, findDealById, listDeals, loadDealById, manageDealByAdmin, refreshDealContract, serializeDeal } from '../services/deal.service.js';
 import { Notification } from '../models/notification.model.js';
-import { createNotification } from '../services/notification.service.js';
+import { buildDealNotificationMetadata, createNotification } from '../services/notification.service.js';
 import { getPagination } from '../utils/pagination.js';
 
 export const getAdminDealSummary = async (_req, res, next) => {
@@ -32,6 +32,14 @@ export const listAdminDeals = async (req, res, next) => {
 
     if (req.query.actBy) {
       where.actBy = req.query.actBy;
+    }
+
+    if (req.query.adminReviewMode === 'true') {
+      where.adminReviewMode = true;
+    }
+
+    if (req.query.adminReviewMode === 'false') {
+      where.adminReviewMode = false;
     }
 
     const search = String(req.query.search || '').trim();
@@ -75,7 +83,8 @@ export const updateAdminDeal = async (req, res, next) => {
     const previousState = {
       status: deal.status,
       step: deal.step,
-      actBy: deal.actBy
+      actBy: deal.actBy,
+      adminReviewMode: Boolean(deal.adminReviewMode)
     };
 
     const updated = await sequelize.transaction(async (transaction) => {
@@ -85,6 +94,8 @@ export const updateAdminDeal = async (req, res, next) => {
         step: req.body.step,
         actBy: req.body.actBy,
         note: req.body.note,
+        adminReviewMode: req.body.adminReviewMode,
+        adminReviewReason: req.body.adminReviewReason,
         adminId: Number(req.auth.sub),
         adminName: req.auth.name || 'ادمین',
         transaction
@@ -105,6 +116,9 @@ export const updateAdminDeal = async (req, res, next) => {
     if (item.actBy !== previousState.actBy) {
       changeParts.push(`صف اقدام روی «${item.actByLabel || item.actBy}» قرار گرفت`);
     }
+    if (item.adminReviewMode !== previousState.adminReviewMode) {
+      changeParts.push(item.adminReviewMode ? 'پرونده وارد بررسی مدیریت شد' : 'پرونده از بررسی مدیریت خارج شد');
+    }
 
     if (changeParts.length) {
       const title = 'بروزرسانی وضعیت معامله';
@@ -120,7 +134,8 @@ export const updateAdminDeal = async (req, res, next) => {
             modelType: Notification.MODEL_TYPES.CUSTOMER,
             modelId: item.customerId,
             senderType: Notification.MODEL_TYPES.ADMIN,
-            senderId: Number(req.auth.sub)
+            senderId: Number(req.auth.sub),
+            metadata: buildDealNotificationMetadata({ dealId: item.id, recipientType: Notification.MODEL_TYPES.CUSTOMER })
           })
         );
       }
@@ -133,7 +148,8 @@ export const updateAdminDeal = async (req, res, next) => {
             modelType: Notification.MODEL_TYPES.BROKER,
             modelId: item.brokerId,
             senderType: Notification.MODEL_TYPES.ADMIN,
-            senderId: Number(req.auth.sub)
+            senderId: Number(req.auth.sub),
+            metadata: buildDealNotificationMetadata({ dealId: item.id, recipientType: Notification.MODEL_TYPES.BROKER })
           })
         );
       }
@@ -205,7 +221,8 @@ export const removeAdminDealSignature = async (req, res, next) => {
           modelType: Notification.MODEL_TYPES.CUSTOMER,
           modelId: item.customerId,
           senderType: Notification.MODEL_TYPES.ADMIN,
-          senderId: Number(req.auth.sub)
+          senderId: Number(req.auth.sub),
+          metadata: buildDealNotificationMetadata({ dealId: item.id, recipientType: Notification.MODEL_TYPES.CUSTOMER })
         })
       );
     }
@@ -218,7 +235,8 @@ export const removeAdminDealSignature = async (req, res, next) => {
           modelType: Notification.MODEL_TYPES.BROKER,
           modelId: item.brokerId,
           senderType: Notification.MODEL_TYPES.ADMIN,
-          senderId: Number(req.auth.sub)
+          senderId: Number(req.auth.sub),
+          metadata: buildDealNotificationMetadata({ dealId: item.id, recipientType: Notification.MODEL_TYPES.BROKER })
         })
       );
     }

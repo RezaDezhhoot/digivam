@@ -15,6 +15,7 @@ import { customerPanelRouter } from './customer-panel.routes.js';
 import { customerProfileRouter } from './customer-profile.routes.js';
 import { customerTicketRouter } from './customer-ticket.routes.js';
 import { customerValidationRouter } from './customer-validation.routes.js';
+import { fileRouter } from './file.routes.js';
 import { webPublicRouter } from './web-public.routes.js';
 
 export const apiRouter = Router();
@@ -23,6 +24,7 @@ apiRouter.get('/status', (_req, res) => {
   res.status(200).json({ service: 'بک اند', ready: true, panel: String(_req.query.panel || '').trim() || null });
 });
 
+apiRouter.use('/files', fileRouter);
 apiRouter.use('/broker/auth', brokerAuthRouter);
 apiRouter.use('/broker/profile', brokerProfileRouter);
 apiRouter.use('/broker/facilities', brokerFacilityRouter);

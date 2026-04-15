@@ -26,7 +26,7 @@ export const serializeWallet = (wallet) => ({
   uuid: wallet?.uuid || null
 });
 
-export const ensureWallet = async ({ holderType, holderId, name, description = null, meta = null }) => {
+export const ensureWallet = async ({ holderType, holderId, name, description = null, meta = null, transaction = null }) => {
   const [wallet] = await Wallet.findOrCreate({
     where: {
       holderType,
@@ -43,7 +43,8 @@ export const ensureWallet = async ({ holderType, holderId, name, description = n
       meta,
       balance: 0,
       decimalPlaces: 2
-    }
+    },
+    transaction
   });
 
   return wallet;
@@ -155,6 +156,91 @@ export const creditWallet = async ({ walletId, amount, payableType, payableId, m
 
   return sequelize.transaction((managedTransaction) =>
     applyWalletCredit({
+      walletId,
+      amount,
+      payableType,
+      payableId,
+      meta,
+      transaction: managedTransaction
+    })
+  );
+};
+
+const applyWalletDebit = async ({ walletId, amount, payableType, payableId, meta = null, transaction }) => {
+  const normalizedAmount = normalizeMoneyAmount(amount);
+
+  const wallet = await Wallet.findByPk(walletId, {
+    transaction,
+    lock: transaction?.LOCK?.UPDATE
+  });
+
+  if (!wallet) {
+    throw new Error('کیف پول یافت نشد');
+  }
+
+  const existing = await Transaction.findOne({
+    where: {
+      walletId,
+      payableType,
+      payableId,
+      type: Transaction.TYPES.WITHDRAW
+    },
+    transaction,
+    lock: transaction?.LOCK?.UPDATE
+  });
+
+  if (existing) {
+    await wallet.reload({ transaction });
+    return {
+      wallet,
+      transaction: existing,
+      created: false
+    };
+  }
+
+  const currentBalance = normalizeMoneyAmount(wallet.balance);
+  if (currentBalance < normalizedAmount) {
+    const error = new Error('موجودی شما کافی نیست و لطفا از بخش اعتبارات ، اعتبار خود را افراش دهید');
+    error.status = 422;
+    error.code = 'insufficient_wallet_balance';
+    throw error;
+  }
+
+  await wallet.decrement('balance', {
+    by: normalizedAmount,
+    transaction
+  });
+
+  const createdTransaction = await Transaction.create(
+    {
+      payableType,
+      payableId,
+      walletId,
+      type: Transaction.TYPES.WITHDRAW,
+      amount: normalizedAmount,
+      confirmed: true,
+      meta,
+      uuid: crypto.randomUUID()
+    },
+    { transaction }
+  );
+
+  await wallet.reload({ transaction });
+
+  return {
+    wallet,
+    transaction: createdTransaction,
+    created: true
+  };
+};
+
+export const debitWallet = async ({ walletId, amount, payableType, payableId, meta = null, transaction = null }) => {
+  if (transaction) {
+    return applyWalletDebit({ walletId, amount, payableType, payableId, meta, transaction });
+  }
+
+  return sequelize.transaction((managedTransaction) =>
+    applyWalletDebit({
       walletId,
       amount,
       payableType,

@@ -2,7 +2,10 @@ import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { Broker } from '../models/broker.model.js';
 import { env } from '../config/env.js';
+import { Notification } from '../models/notification.model.js';
 import { Wallet } from '../models/wallet.model.js';
+import { createNotification } from '../services/notification.service.js';
+import { loadSettingsItems, serializeAdminSettings } from '../services/site-settings.service.js';
 import { ensureWallet } from '../services/wallet.service.js';
 import { normalizePhone } from '../utils/phone.js';
 import {
@@ -84,6 +87,8 @@ export const verifyBrokerOtp = async (req, res, next) => {
       });
     }
 
+    const isFirstLogin = !broker.auth;
+
     const matchesInMemory = verifyOtp(phone, code);
     const matchesHash = broker.password === hashOtp(code);
 
@@ -94,6 +99,23 @@ export const verifyBrokerOtp = async (req, res, next) => {
     }
 
     await broker.update({ auth: true });
+
+    if (isFirstLogin) {
+      const settings = serializeAdminSettings(await loadSettingsItems());
+      const welcomeMessage = String(settings.welcomeMessageBroker || '').trim();
+
+      if (welcomeMessage) {
+        await createNotification({
+          category: Notification.CATEGORIES.INFO,
+          title: 'خوش آمدید',
+          body: welcomeMessage,
+          modelType: Notification.MODEL_TYPES.BROKER,
+          modelId: broker.id,
+          senderType: Notification.MODEL_TYPES.BROKER,
+          senderId: broker.id
+        }).catch(() => null);
+      }
+    }
 
     const token = jwt.sign(
       {
@@ -112,7 +134,9 @@ export const verifyBrokerOtp = async (req, res, next) => {
         id: broker.id,
         phone: broker.phone,
         auth: broker.auth,
-        verifyLevel: broker.verifyLevel
+        verifyLevel: broker.verifyLevel,
+        isSuspended: Boolean(broker.isSuspended),
+        suspendReason: broker.suspendReason || ''
       }
     });
   } catch (error) {

@@ -25,6 +25,11 @@ export { FacilityDocument } from './facility-document.model.js';
 export { RecentlyViewed } from './recently-viewed.model.js';
 export { Deal } from './deal.model.js';
 export { DealPaymentType } from './deal-payment-type.model.js';
+export { DealMessage } from './deal-message.model.js';
+export { DealMessageRead } from './deal-message-read.model.js';
+export { Tutorial } from './tutorial.model.js';
+export { BrokerRate } from './broker-rate.model.js';
+export { BrokerWithdrawal } from './broker-withdrawal.model.js';
 
 import { User } from './user.model.js';
 import { Customer } from './customer.model.js';
@@ -50,6 +55,11 @@ import { FacilityDocument } from './facility-document.model.js';
 import { RecentlyViewed } from './recently-viewed.model.js';
 import { Deal } from './deal.model.js';
 import { DealPaymentType } from './deal-payment-type.model.js';
+import { DealMessage } from './deal-message.model.js';
+import { DealMessageRead } from './deal-message-read.model.js';
+import { Tutorial } from './tutorial.model.js';
+import { BrokerRate } from './broker-rate.model.js';
+import { BrokerWithdrawal } from './broker-withdrawal.model.js';
 
 Broker.hasOne(File, {
 	as: 'avatar',
@@ -342,6 +352,26 @@ DealPaymentType.belongsTo(Deal, {
 	foreignKey: 'deal_id'
 });
 
+Deal.hasMany(DealMessage, {
+	as: 'messages',
+	foreignKey: 'deal_id'
+});
+
+DealMessage.belongsTo(Deal, {
+	as: 'deal',
+	foreignKey: 'deal_id'
+});
+
+Deal.hasMany(DealMessageRead, {
+	as: 'messageReads',
+	foreignKey: 'deal_id'
+});
+
+DealMessageRead.belongsTo(Deal, {
+	as: 'deal',
+	foreignKey: 'deal_id'
+});
+
 Facility.hasMany(Deal, {
 	as: 'deals',
 	foreignKey: 'facility_id'
@@ -401,4 +431,73 @@ Facility.hasMany(RecentlyViewed, {
 RecentlyViewed.belongsTo(Facility, {
 	as: 'facility',
 	foreignKey: 'facility_id'
+});
+
+Broker.hasMany(BrokerRate, {
+	as: 'rates',
+	foreignKey: 'broker_id'
+});
+
+BrokerRate.belongsTo(Broker, {
+	as: 'broker',
+	foreignKey: 'broker_id'
+});
+
+Deal.hasOne(BrokerRate, {
+	as: 'brokerRate',
+	foreignKey: 'deal_id'
+});
+
+BrokerRate.belongsTo(Deal, {
+	as: 'deal',
+	foreignKey: 'deal_id'
+});
+
+Customer.hasMany(BrokerRate, {
+	as: 'brokerRates',
+	foreignKey: 'customer_id'
+});
+
+BrokerRate.belongsTo(Customer, {
+	as: 'customer',
+	foreignKey: 'customer_id'
+});
+
+Broker.hasMany(BrokerWithdrawal, {
+	as: 'withdrawals',
+	foreignKey: 'broker_id'
+});
+
+BrokerWithdrawal.belongsTo(Broker, {
+	as: 'broker',
+	foreignKey: 'broker_id'
+});
+
+Wallet.hasMany(BrokerWithdrawal, {
+	as: 'withdrawals',
+	foreignKey: 'wallet_id'
+});
+
+BrokerWithdrawal.belongsTo(Wallet, {
+	as: 'wallet',
+	foreignKey: 'wallet_id'
+});
+
+BrokerWithdrawal.belongsTo(Transaction, {
+	as: 'transaction',
+	foreignKey: 'transaction_id'
+});
+
+BrokerWithdrawal.hasOne(File, {
+	as: 'adminFile',
+	foreignKey: 'fileable_id',
+	constraints: false,
+	scope: { fileable_type: 'broker_withdrawal', subject: 'admin_file' }
+});
+
+Tutorial.hasOne(File, {
+	as: 'video',
+	foreignKey: 'fileable_id',
+	constraints: false,
+	scope: { fileable_type: 'tutorial', subject: Tutorial.VIDEO_SUBJECT }
 });

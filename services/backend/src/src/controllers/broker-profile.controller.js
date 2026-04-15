@@ -83,6 +83,8 @@ const serializeProfile = (broker) => ({
   postalCode: broker.postalCode,
   address: broker.address,
   verifyLevel: broker.verifyLevel,
+  isSuspended: Boolean(broker.isSuspended),
+  suspendReason: broker.suspendReason || '',
   avatar: fileUrl(broker.avatar),
   idCart: fileUrl(broker.idCart),
   birthCertificate: fileUrl(broker.birthCertificate),

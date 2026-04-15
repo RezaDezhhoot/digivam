@@ -8,6 +8,7 @@ import BrokerNotificationsView from '../views/BrokerNotificationsView.vue';
 import BrokerProfileView from '../views/BrokerProfileView.vue';
 import BrokerTicketsView from '../views/BrokerTicketsView.vue';
 import BrokerValidityView from '../views/BrokerValidityView.vue';
+import { BROKER_TOKEN_KEY, readStoredBrokerProfile } from '../services/broker-auth.api.js';
 
 const routes = [
   { path: '/auth', name: 'broker-auth', component: BrokerAuthView, meta: { guestOnly: true } },
@@ -59,6 +60,11 @@ const routes = [
         path: 'tickets',
         name: 'broker-tickets',
         component: BrokerTicketsView
+      },
+      {
+        path: 'academy',
+        name: 'broker-academy',
+        component: () => import('../views/BrokerAcademyView.vue')
       }
     ]
   }
@@ -70,14 +76,19 @@ const router = createRouter({
 });
 
 router.beforeEach((to) => {
-  const token = localStorage.getItem('broker_token');
+  const token = localStorage.getItem(BROKER_TOKEN_KEY);
+  const profile = readStoredBrokerProfile();
 
   if (to.meta.requiresAuth && !token) {
     return '/auth';
   }
 
+  if (token && profile?.isSuspended && to.name !== 'broker-tickets' && to.name !== 'broker-auth') {
+    return '/tickets';
+  }
+
   if (to.meta.guestOnly && token) {
-    return '/dashboard';
+    return profile?.isSuspended ? '/tickets' : '/dashboard';
   }
 
   return true;

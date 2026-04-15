@@ -1,5 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue';
+import Swal from 'sweetalert2';
+import PersianDatePickerInput from './PersianDatePickerInput.vue';
 import {
   advanceDealPaymentStage,
   startDealCashPayment,
@@ -17,11 +19,15 @@ const feedbackText = ref('');
 const feedbackTone = ref('info');
 const fileInputRefs = ref({});
 const selectedCheckFiles = ref({});
+const checkFormData = ref({});
 
 const paymentTypes = computed(() => (Array.isArray(props.deal?.paymentTypes) ? props.deal.paymentTypes : []));
 const allDone = computed(() => paymentTypes.value.length > 0 && paymentTypes.value.every((item) => item.status === 'done'));
 const canAdvance = computed(() => allDone.value && !busy.value);
-const isActiveStep = computed(() => props.deal?.status === 'in_progress' && props.deal?.step === 'payment' && props.deal?.actBy === 'customer');
+const isLockedByAdminReview = computed(() => Boolean(props.deal?.adminReviewMode));
+const isActiveStep = computed(
+  () => !isLockedByAdminReview.value && props.deal?.status === 'in_progress' && props.deal?.step === 'payment' && props.deal?.actBy === 'customer'
+);
 
 const showFeedback = (text, tone = 'info') => {
   feedbackText.value = text;
@@ -43,6 +49,7 @@ const getUploadedCheckFiles = (item) => {
       {
         fileId: item.values?.fileId,
         fileUrl: item.values?.fileUrl,
+        downloadUrl: item.values?.downloadUrl,
         fileName: item.values?.fileName
       }
     ];
@@ -80,6 +87,13 @@ const removeSelectedCheckFile = (paymentTypeId, index) => {
   };
 };
 
+const getCheckForm = (paymentTypeId) => {
+  if (!checkFormData.value[paymentTypeId]) {
+    checkFormData.value[paymentTypeId] = { checkDate: '', nationalCode: '', fullName: '', sayadRegistered: false };
+  }
+  return checkFormData.value[paymentTypeId];
+};
+
 const handleCheckUpload = async (paymentTypeId) => {
   const files = getSelectedCheckFiles(paymentTypeId);
   if (!files.length) {
@@ -87,10 +101,28 @@ const handleCheckUpload = async (paymentTypeId) => {
     return;
   }
 
+  const form = getCheckForm(paymentTypeId);
+  if (!form.checkDate) {
+    showFeedback('تاریخ چک الزامی است.', 'error');
+    return;
+  }
+  if (!form.nationalCode || !/^\d{10}$/.test(form.nationalCode)) {
+    showFeedback('کد ملی باید ۱۰ رقم باشد.', 'error');
+    return;
+  }
+  if (!form.fullName || form.fullName.trim().length < 3) {
+    showFeedback('نام و نام خانوادگی الزامی است.', 'error');
+    return;
+  }
+
   const formData = new FormData();
   files.forEach((file) => {
     formData.append('file', file);
   });
+  formData.append('checkDate', form.checkDate);
+  formData.append('nationalCode', form.nationalCode);
+  formData.append('fullName', form.fullName.trim());
+  formData.append('sayadRegistered', form.sayadRegistered ? 'true' : 'false');
 
   clearFeedback();
   busy.value = true;
@@ -131,6 +163,11 @@ const handleAdvance = async () => {
     return;
   }
 
+  const { isConfirmed } = await Swal.fire({ title: 'تکمیل پرداخت', text: 'همه پرداخت‌ها تکمیل شده‌اند. پرونده به مرحله انتقال امتیاز برود؟', icon: 'question', confirmButtonText: 'بله، ادامه', cancelButtonText: 'انصراف', showCancelButton: true, reverseButtons: true });
+  if (!isConfirmed) {
+    return;
+  }
+
   clearFeedback();
   busy.value = true;
   try {
@@ -161,6 +198,10 @@ const handleAdvance = async () => {
 
     <div v-if="feedbackText" class="payment-feedback" :class="`tone-${feedbackTone}`">{{ feedbackText }}</div>
 
+    <div v-if="isLockedByAdminReview" class="payment-feedback tone-error">
+      این پرونده در حال بررسی مدیریت است و تا پایان بررسی، پرداخت یا تغییر مرحله از سمت شما غیرفعال شده است.
+    </div>
+
     <div v-if="paymentTypes.length" class="payment-items-grid">
       <article
         v-for="item in paymentTypes"
@@ -181,15 +222,76 @@ const handleAdvance = async () => {
         <p v-if="item.description" class="payment-item-desc">{{ item.description }}</p>
 
         <div v-if="item.paymentType === 'check'" class="payment-check-stack">
+          <div v-if="item.status === 'done' && item.values" class="check-extra-info">
+            <div v-if="item.values.checkDate" class="check-info-row">
+              <span>تاریخ چک:</span>
+              <strong>{{ item.values.checkDate }}</strong>
+            </div>
+            <div v-if="item.values.fullName" class="check-info-row">
+              <span>نام صاحب چک:</span>
+              <strong>{{ item.values.fullName }}</strong>
+            </div>
+            <div v-if="item.values.nationalCode" class="check-info-row">
+              <span>کد ملی:</span>
+              <strong>{{ item.values.nationalCode }}</strong>
+            </div>
+            <div class="check-info-row">
+              <span>ثبت در سامانه صیاد:</span>
+              <strong>{{ item.values.sayadRegistered ? 'بله' : 'خیر' }}</strong>
+            </div>
+          </div>
+
+          <div v-if="isActiveStep && item.status !== 'done'" class="check-extra-form">
+            <div class="check-form-row">
+              <label class="check-form-label">تاریخ چک <span class="check-form-required">*</span></label>
+              <PersianDatePickerInput
+                :model-value="getCheckForm(item.id).checkDate"
+                placeholder="تاریخ چک را انتخاب کنید"
+                @update:model-value="getCheckForm(item.id).checkDate = $event"
+              />
+            </div>
+            <div class="check-form-row">
+              <label class="check-form-label">کد ملی صاحب چک <span class="check-form-required">*</span></label>
+              <input
+                v-model="getCheckForm(item.id).nationalCode"
+                type="text"
+                class="check-form-input"
+                maxlength="10"
+                placeholder="کد ملی ۱۰ رقمی"
+                inputmode="numeric"
+              />
+            </div>
+            <div class="check-form-row">
+              <label class="check-form-label">نام و نام خانوادگی <span class="check-form-required">*</span></label>
+              <input
+                v-model="getCheckForm(item.id).fullName"
+                type="text"
+                class="check-form-input"
+                maxlength="100"
+                placeholder="نام و نام خانوادگی صاحب چک"
+              />
+            </div>
+            <div class="check-form-row check-form-row--checkbox">
+              <label class="check-form-checkbox-label">
+                <input
+                  v-model="getCheckForm(item.id).sayadRegistered"
+                  type="checkbox"
+                  class="check-form-checkbox"
+                />
+                <span>چک در سامانه صیاد ثبت شده است</span>
+              </label>
+            </div>
+          </div>
+
           <div v-if="getUploadedCheckFiles(item).length" class="payment-uploaded-files">
             <strong>فایل‌های ثبت‌شده</strong>
             <div class="payment-selected-file-list">
               <a
                 v-for="file in getUploadedCheckFiles(item)"
                 :key="file.fileId || file.fileUrl || file.fileName"
-                :href="file.fileUrl"
+                :href="file.downloadUrl || file.fileUrl"
+                download
                 class="payment-file-chip payment-file-chip--uploaded"
-                target="_blank"
                 rel="noreferrer"
               >
                 {{ file.fileName || 'فایل پرداخت' }}
@@ -275,316 +377,4 @@ const handleAdvance = async () => {
   </section>
 </template>
 
-<style scoped>
-.payment-stage-card {
-  display: grid;
-  gap: 20px;
-}
-
-.payment-stage-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.payment-kicker {
-  display: inline-flex;
-  align-items: center;
-  min-height: 28px;
-  padding: 0 12px;
-  border-radius: 999px;
-  background: rgba(14, 116, 144, 0.12);
-  color: #0f766e;
-  font-size: 11px;
-  font-weight: 900;
-  margin-bottom: 10px;
-}
-
-.payment-stage-head h3 {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 900;
-}
-
-.payment-stage-head p {
-  margin: 6px 0 0;
-  color: var(--web-muted);
-  font-size: 12px;
-  line-height: 1.9;
-}
-
-.payment-stage-badge {
-  min-height: 38px;
-  padding: 0 14px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: 900;
-  white-space: nowrap;
-}
-
-.payment-stage-badge.pending {
-  background: rgba(234, 88, 12, 0.12);
-  color: #c2410c;
-}
-
-.payment-stage-badge.done {
-  background: rgba(34, 197, 94, 0.12);
-  color: #15803d;
-}
-
-.payment-feedback {
-  padding: 13px 15px;
-  border-radius: 18px;
-  border: 1px solid transparent;
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.payment-feedback.tone-success {
-  background: rgba(34, 197, 94, 0.12);
-  border-color: rgba(34, 197, 94, 0.18);
-  color: #15803d;
-}
-
-.payment-feedback.tone-error {
-  background: rgba(239, 68, 68, 0.12);
-  border-color: rgba(239, 68, 68, 0.2);
-  color: #b91c1c;
-}
-
-.payment-feedback.tone-info {
-  background: rgba(59, 130, 246, 0.1);
-  border-color: rgba(59, 130, 246, 0.18);
-  color: #1d4ed8;
-}
-
-.payment-items-grid {
-  display: grid;
-  gap: 14px;
-}
-
-.payment-item-card {
-  padding: 18px;
-  border-radius: 22px;
-  border: 1px solid var(--web-border);
-  background: color-mix(in srgb, var(--web-surface) 80%, transparent);
-  display: grid;
-  gap: 12px;
-}
-
-.payment-item-card.is-done {
-  border-color: rgba(34, 197, 94, 0.22);
-  background: rgba(34, 197, 94, 0.06);
-}
-
-.payment-item-top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.payment-item-meta {
-  display: grid;
-  gap: 4px;
-}
-
-.payment-item-meta strong {
-  font-size: 14px;
-  font-weight: 900;
-}
-
-.payment-item-amount {
-  font-size: 13px;
-  font-weight: 800;
-  color: #0f766e;
-}
-
-.payment-item-badge {
-  min-height: 26px;
-  padding: 0 10px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  font-size: 11px;
-  font-weight: 900;
-  white-space: nowrap;
-}
-
-.badge-done {
-  background: rgba(34, 197, 94, 0.12);
-  color: #15803d;
-}
-
-.badge-pending {
-  background: rgba(234, 88, 12, 0.1);
-  color: #c2410c;
-}
-
-.payment-item-desc {
-  margin: 0;
-  color: var(--web-muted);
-  font-size: 12px;
-  line-height: 1.8;
-}
-
-.payment-done-note {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 800;
-  color: #15803d;
-}
-
-.payment-check-stack {
-  display: grid;
-  gap: 12px;
-}
-
-.payment-uploaded-files,
-.payment-selected-files {
-  display: grid;
-  gap: 8px;
-}
-
-.payment-uploaded-files strong,
-.payment-selected-files strong {
-  font-size: 12px;
-  font-weight: 900;
-  color: var(--web-text);
-}
-
-.payment-selected-file-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.payment-file-chip {
-  border: 1px solid rgba(15, 118, 110, 0.18);
-  background: rgba(255, 255, 255, 0.9);
-  color: #0f172a;
-  border-radius: 999px;
-  min-height: 34px;
-  padding: 0 12px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  font-weight: 700;
-  text-decoration: none;
-}
-
-.payment-file-chip--uploaded {
-  color: #0f766e;
-  background: rgba(15, 118, 110, 0.08);
-}
-
-.payment-item-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.payment-item-actions--stack {
-  align-items: stretch;
-}
-
-.payment-file-input {
-  display: none;
-}
-
-.payment-file-label,
-.payment-action-btn,
-.payment-primary-btn,
-.payment-secondary-btn {
-  min-height: 42px;
-  padding: 0 16px;
-  border-radius: 14px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: 900;
-}
-
-.payment-file-label {
-  border: 1px dashed rgba(15, 118, 110, 0.28);
-  background: rgba(15, 118, 110, 0.06);
-  color: #0f766e;
-}
-
-.payment-action-btn {
-  border: 1px solid var(--web-border-strong);
-  background: color-mix(in srgb, var(--web-surface) 82%, transparent);
-  color: var(--web-text);
-}
-
-.payment-primary-btn {
-  border: 1px solid var(--web-primary);
-  background: linear-gradient(135deg, var(--web-primary) 0%, #c2410c 100%);
-  color: #fff;
-}
-
-.payment-secondary-btn {
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  background: rgba(255, 255, 255, 0.86);
-  color: #0f172a;
-}
-
-.payment-file-label:disabled,
-.payment-action-btn:disabled,
-.payment-primary-btn:disabled,
-.payment-secondary-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.payment-empty-note {
-  padding: 28px 18px;
-  border-radius: 22px;
-  border: 1px dashed var(--web-border);
-  color: var(--web-muted);
-  font-size: 12px;
-  text-align: center;
-}
-
-.payment-advance-section {
-  display: grid;
-  gap: 8px;
-}
-
-.payment-advance-btn {
-  width: 100%;
-  min-height: 54px;
-  border-radius: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  font-weight: 900;
-  border: 1px solid var(--web-primary);
-  background: linear-gradient(135deg, var(--web-primary) 0%, #c2410c 100%);
-  color: #fff;
-  transition: opacity 0.2s;
-}
-
-.payment-advance-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.payment-advance-hint {
-  margin: 0;
-  color: var(--web-muted);
-  font-size: 11px;
-  text-align: center;
-}
-</style>
+<style scoped src="./styles/CustomerDealPaymentStage.css"></style>

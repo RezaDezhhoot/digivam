@@ -4,12 +4,13 @@ import { env } from '../config/env.js';
 import { DealPaymentType } from '../models/deal-payment-type.model.js';
 import { File } from '../models/file.model.js';
 import { Invoice } from '../models/invoice.model.js';
+import { Notification } from '../models/notification.model.js';
 import { Zarin } from '../services/payment/drivers/zarin.js';
 import { PaymentStatus } from '../services/payment/enums/payment-status.js';
 import { Payment } from '../services/payment/payment.js';
 import { toEnglishDigits } from '../utils/digits.js';
 import { advanceDealPayment, findDealById, loadDealById, serializeDeal } from '../services/deal.service.js';
-import { createNotification } from '../services/notification.service.js';
+import { buildDealNotificationMetadata, createNotification } from '../services/notification.service.js';
 import { DEAL_PAYMENT_STATUSES, PaymentTypes } from '../constants/deal.js';
 
 const DEAL_CASH_PAYMENT_PAYABLE_TYPE = 'deal_cash_payment';
@@ -30,6 +31,10 @@ export const uploadCheckPaymentFile = async (req, res, next) => {
     }
 
     const serialized = await serializeDeal(deal);
+
+    if (serialized.adminReviewMode) {
+      return res.status(423).json({ message: 'این معامله در حال بررسی مدیریت است و امکان بارگذاری فایل پرداخت وجود ندارد' });
+    }
 
     if (serialized.status !== 'in_progress' || serialized.step !== 'payment') {
       return res.status(422).json({ message: 'معامله در مرحله پرداخت نیست' });
@@ -52,6 +57,21 @@ export const uploadCheckPaymentFile = async (req, res, next) => {
 
     if (!files.length) {
       return res.status(422).json({ message: 'فایل ارسال نشده است' });
+    }
+
+    const checkDate = String(req.body.checkDate || '').trim();
+    const nationalCode = String(req.body.nationalCode || '').trim();
+    const fullName = String(req.body.fullName || '').trim();
+    const sayadRegistered = req.body.sayadRegistered === 'true' || req.body.sayadRegistered === '1';
+
+    if (!checkDate) {
+      return res.status(422).json({ message: 'تاریخ چک الزامی است' });
+    }
+    if (!nationalCode || !/^\d{10}$/.test(nationalCode)) {
+      return res.status(422).json({ message: 'کد ملی باید ۱۰ رقم باشد' });
+    }
+    if (!fullName || fullName.length < 3 || fullName.length > 100) {
+      return res.status(422).json({ message: 'نام و نام خانوادگی الزامی است' });
     }
 
     const existingValues = paymentType.values && typeof paymentType.values === 'object' ? paymentType.values : {};
@@ -93,7 +113,11 @@ export const uploadCheckPaymentFile = async (req, res, next) => {
         values: {
           ...restValues,
           fileId: primaryFileId,
-          fileIds: mergedFileIds
+          fileIds: mergedFileIds,
+          checkDate,
+          nationalCode,
+          fullName,
+          sayadRegistered
         }
       },
       { where: { id: paymentTypeId, dealId } }
@@ -118,6 +142,10 @@ export const startDealCashPayment = async (req, res, next) => {
     }
 
     const serialized = await serializeDeal(deal);
+
+    if (serialized.adminReviewMode) {
+      return res.status(423).json({ message: 'این معامله در حال بررسی مدیریت است و امکان شروع پرداخت وجود ندارد' });
+    }
 
     if (serialized.status !== 'in_progress' || serialized.step !== 'payment') {
       return res.status(422).json({ message: 'معامله در مرحله پرداخت نیست' });
@@ -231,6 +259,10 @@ export const verifyDealCashPayment = async (req, res, next) => {
     const serialized = await serializeDeal(deal);
     const dealCode = serialized.dealCode || `DG-${dealId}`;
 
+    if (serialized.adminReviewMode) {
+      return res.status(423).json({ message: 'این معامله در حال بررسی مدیریت است و امکان تایید پرداخت وجود ندارد' });
+    }
+
     const driver = await Payment.make(
       new Zarin({
         holderType: 'customer',
@@ -302,13 +334,14 @@ export const advanceDealPaymentStage = async (req, res, next) => {
 
     if (deal.brokerId) {
       createNotification({
-        category: 'attention',
+        category: Notification.CATEGORIES.ATTENTION,
         title: 'پرداخت معامله تکمیل شد',
         body: `مشتری پرداخت‌های مرحله پرداخت را تکمیل کرد. پرونده وارد مرحله انتقال امتیاز شده است.`,
-        modelType: 'broker',
+        modelType: Notification.MODEL_TYPES.BROKER,
         modelId: Number(deal.brokerId),
-        senderType: 'customer',
-        senderId: customerId
+        senderType: Notification.MODEL_TYPES.CUSTOMER,
+        senderId: customerId,
+        metadata: buildDealNotificationMetadata({ dealId, recipientType: Notification.MODEL_TYPES.BROKER })
       }).catch(() => {});
     }
 

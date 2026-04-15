@@ -39,6 +39,7 @@ export const updateSettingsValidator = [
   body('marketMetaKeywords').optional({ values: 'falsy' }).isLength({ max: 1000 }).withMessage('کلیدواژه های سئوی بازار وام بیش از حد مجاز است'),
   validateJson('homeFeatureCards', 'array'),
   validateJson('footerContent', 'object'),
+  validateJson('licensesContent', 'object'),
   body('featuredFacilityId').optional({ values: 'falsy' }).isInt({ min: 1 }).withMessage('وام ویژه انتخاب شده نامعتبر است'),
   body('decreaseValidity')
     .notEmpty()

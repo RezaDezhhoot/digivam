@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { Op } from 'sequelize';
 import { Broker } from '../models/broker.model.js';
+import { BrokerWithdrawal } from '../models/broker-withdrawal.model.js';
 import { Customer } from '../models/customer.model.js';
 import { Document } from '../models/document.model.js';
 import { Facility } from '../models/facility.model.js';
@@ -23,6 +24,7 @@ import { PaymentStatus } from '../services/payment/enums/payment-status.js';
 import { TICKET_STATUS } from '../services/ticket.service.js';
 import { ensureWallet, ensureWalletsForHolders, holderKey, serializeWallet } from '../services/wallet.service.js';
 import { createPaginationResult, getPagination } from '../utils/pagination.js';
+import { sequelize } from '../config/database.js';
 
 const normalizeSearch = (value) => String(value || '').trim();
 
@@ -37,6 +39,11 @@ const startOfToday = () => {
   const value = new Date();
   value.setHours(0, 0, 0, 0);
   return value;
+};
+
+const normalizeSuspendReason = (value) => {
+  const normalized = String(value || '').trim();
+  return normalized || null;
 };
 
 const attachWallets = async (items, holderType) => {
@@ -54,6 +61,99 @@ const attachWallets = async (items, holderType) => {
       walletBalance: wallet.balance
     };
   });
+};
+
+export const getAdminDealAnalytics = async (req, res, next) => {
+  try {
+    const period = String(req.query.period || 'daily');
+    const now = new Date();
+    let startDate;
+    let groupFormat;
+
+    switch (period) {
+      case 'daily':
+        startDate = new Date(now);
+        startDate.setDate(startDate.getDate() - 30);
+        groupFormat = '%Y-%m-%d';
+        break;
+      case 'weekly':
+        startDate = new Date(now);
+        startDate.setDate(startDate.getDate() - 12 * 7);
+        groupFormat = 'YEAR_WEEK';
+        break;
+      case 'monthly':
+        startDate = new Date(now);
+        startDate.setMonth(startDate.getMonth() - 12);
+        groupFormat = '%Y-%m';
+        break;
+      case 'yearly':
+        startDate = new Date(now);
+        startDate.setFullYear(startDate.getFullYear() - 5);
+        groupFormat = '%Y';
+        break;
+      default:
+        startDate = new Date(now);
+        startDate.setDate(startDate.getDate() - 30);
+        groupFormat = '%Y-%m-%d';
+    }
+
+    let query;
+    if (groupFormat === 'YEAR_WEEK') {
+      query = `
+        SELECT
+          CONCAT(YEAR(d.created_at), '-W', LPAD(WEEK(d.created_at), 2, '0')) as period,
+          SUM(d.broker_confirmation_amount) as totalAmount,
+          COUNT(*) as dealCount
+        FROM deals d
+        WHERE d.broker_confirmation_amount > 0
+          AND d.created_at >= ?
+        GROUP BY YEAR(d.created_at), WEEK(d.created_at)
+        ORDER BY period ASC
+      `;
+    } else {
+      query = `
+        SELECT
+          DATE_FORMAT(d.created_at, '${groupFormat}') as period,
+          SUM(d.broker_confirmation_amount) as totalAmount,
+          COUNT(*) as dealCount
+        FROM deals d
+        WHERE d.broker_confirmation_amount > 0
+          AND d.created_at >= ?
+        GROUP BY DATE_FORMAT(d.created_at, '${groupFormat}')
+        ORDER BY period ASC
+      `;
+    }
+
+    const rows = await sequelize.query(query, {
+      replacements: [startDate],
+      type: sequelize.QueryTypes.SELECT
+    });
+
+    const formatLabel = (p) => {
+      switch (period) {
+        case 'daily':
+          return p;
+        case 'weekly':
+          return `هفته ${p.split('-W')[1] || p}`;
+        case 'monthly':
+          return `ماه ${p.split('-')[1]}`;
+        case 'yearly':
+          return p;
+        default:
+          return p;
+      }
+    };
+
+    const items = rows.map((row) => ({
+      label: formatLabel(row.period),
+      title: row.period,
+      value: Number(row.totalAmount || 0)
+    }));
+
+    return res.status(200).json({ items });
+  } catch (error) {
+    return next(error);
+  }
 };
 
 export const getAdminSummary = async (_req, res, next) => {
@@ -86,6 +186,7 @@ export const getAdminSummary = async (_req, res, next) => {
       confirmedWalletTransactions,
       confirmedWalletAmount,
       pendingTickets,
+      pendingWithdrawals,
       newBrokersToday,
       newCustomersToday,
       newFacilitiesToday,
@@ -112,6 +213,7 @@ export const getAdminSummary = async (_req, res, next) => {
       Transaction.count({ where: { confirmed: true } }),
       Transaction.sum('amount', { where: { confirmed: true } }),
       Ticket.count({ where: { parentId: null, status: TICKET_STATUS.PENDING } }),
+      BrokerWithdrawal.count({ where: { status: BrokerWithdrawal.STATUSES.PENDING } }),
       Broker.count({ where: { createdAt: { [Op.gte]: today } } }),
       Customer.count({ where: { createdAt: { [Op.gte]: today } } }),
       Facility.count({ where: { createdAt: { [Op.gte]: today } } }),
@@ -123,12 +225,12 @@ export const getAdminSummary = async (_req, res, next) => {
       customerValidationsTotal,
       customerValidationsPending,
       customerValidationsApproved,
-      customerValidationsRejected
+      customerValidationsRejected,
     ] = await Promise.all([
       CustomerValidation.count(),
       CustomerValidation.count({ where: { status: CustomerValidation.STATUSES.PENDING } }),
       CustomerValidation.count({ where: { status: CustomerValidation.STATUSES.APPROVED } }),
-      CustomerValidation.count({ where: { status: CustomerValidation.STATUSES.REJECTED } })
+      CustomerValidation.count({ where: { status: CustomerValidation.STATUSES.REJECTED } }),
     ]);
 
     const deals = await createDealSummary();
@@ -158,6 +260,7 @@ export const getAdminSummary = async (_req, res, next) => {
       confirmedWalletTransactions,
       confirmedWalletAmount: String(confirmedWalletAmount || 0),
       pendingTickets,
+      pendingWithdrawals,
       todayActivity: {
         newBrokers: newBrokersToday,
         newCustomers: newCustomersToday,
@@ -170,6 +273,7 @@ export const getAdminSummary = async (_req, res, next) => {
         approved: customerValidationsApproved,
         rejected: customerValidationsRejected
       },
+      pendingWithdrawals,
       deals
     });
   } catch (error) {
@@ -228,6 +332,35 @@ export const updateBrokerVerifyLevel = async (req, res, next) => {
     await broker.save();
 
     return res.status(200).json({ message: 'سطح احراز هویت کارگزار بروزرسانی شد' });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const updateBrokerSuspension = async (req, res, next) => {
+  try {
+    const broker = await Broker.findByPk(req.params.id);
+
+    if (!broker) {
+      return res.status(404).json({ message: 'کارگزار یافت نشد' });
+    }
+
+    const isSuspended = req.body.isSuspended === true || req.body.isSuspended === 'true';
+    const suspendReason = isSuspended ? normalizeSuspendReason(req.body.suspendReason) : null;
+
+    await broker.update({
+      isSuspended,
+      suspendReason
+    });
+
+    return res.status(200).json({
+      message: isSuspended ? 'حساب کارگزار معلق شد' : 'تعلیق حساب کارگزار برداشته شد',
+      broker: {
+        id: broker.id,
+        isSuspended: Boolean(broker.isSuspended),
+        suspendReason: broker.suspendReason || ''
+      }
+    });
   } catch (error) {
     return next(error);
   }
@@ -298,6 +431,35 @@ export const deleteCustomer = async (req, res, next) => {
       customer.destroy()
     ]);
     return res.status(200).json({ message: 'مشتری حذف شد' });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const updateCustomerSuspension = async (req, res, next) => {
+  try {
+    const customer = await Customer.findByPk(req.params.id);
+
+    if (!customer) {
+      return res.status(404).json({ message: 'مشتری یافت نشد' });
+    }
+
+    const isSuspended = req.body.isSuspended === true || req.body.isSuspended === 'true';
+    const suspendReason = isSuspended ? normalizeSuspendReason(req.body.suspendReason) : null;
+
+    await customer.update({
+      isSuspended,
+      suspendReason
+    });
+
+    return res.status(200).json({
+      message: isSuspended ? 'حساب مشتری معلق شد' : 'تعلیق حساب مشتری برداشته شد',
+      customer: {
+        id: customer.id,
+        isSuspended: Boolean(customer.isSuspended),
+        suspendReason: customer.suspendReason || ''
+      }
+    });
   } catch (error) {
     return next(error);
   }

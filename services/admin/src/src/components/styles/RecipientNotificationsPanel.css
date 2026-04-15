@@ -1,0 +1,211 @@
+.notification-panel-card {
+  margin-top: 20px;
+  padding: 22px;
+}
+
+.panel-head,
+.latest-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.panel-head {
+  margin-bottom: 18px;
+}
+
+.panel-title {
+  font-size: 18px;
+  font-weight: 800;
+  margin: 0 0 4px;
+}
+
+.panel-subtitle {
+  font-size: 13px;
+  color: var(--admin-muted);
+  margin: 0;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.summary-mini-card,
+.panel-section-card {
+  background: var(--admin-surface-soft);
+  border: 1px solid var(--admin-border);
+  border-radius: 16px;
+}
+
+.summary-mini-card {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--admin-muted);
+}
+
+.summary-mini-card strong {
+  font-size: 18px;
+  color: var(--admin-text);
+}
+
+.warning-tone { background: #fff7ed; }
+.attention-tone { background: #fff7ed; }
+.danger-tone { background: #fef2f2; }
+.neutral-tone { background: #f8fafc; }
+
+.panel-section-card {
+  padding: 18px;
+}
+
+.section-title {
+  font-size: 15px;
+  font-weight: 800;
+  margin-bottom: 14px;
+}
+
+.recipient-info-card {
+  background: var(--admin-surface);
+  border: 1px solid var(--admin-border);
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.recipient-info-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.recipient-info-head span {
+  color: var(--admin-muted);
+  font-size: 12px;
+}
+
+.recipient-info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.recipient-info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  border-radius: 12px;
+  background: var(--admin-surface-soft);
+  border: 1px solid var(--admin-border);
+}
+
+.recipient-info-item span {
+  font-size: 11px;
+  color: var(--admin-muted);
+}
+
+.recipient-info-item strong {
+  font-size: 13px;
+  color: var(--admin-text);
+  word-break: break-word;
+}
+
+.notification-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.notification-item {
+  border: 1px solid var(--admin-border);
+  border-radius: 14px;
+  padding: 14px;
+  background: var(--admin-surface);
+}
+
+.notification-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.notification-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.notification-title {
+  font-size: 14px;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.notification-body {
+  font-size: 13px;
+  line-height: 1.9;
+  color: var(--admin-text);
+}
+
+.notification-meta {
+  font-size: 12px;
+  color: var(--admin-muted);
+  margin-top: 8px;
+}
+
+.notification-empty-state {
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--admin-muted);
+}
+
+.notification-empty-state i {
+  font-size: 34px;
+  opacity: 0.45;
+}
+
+:global(:root[data-theme='dark'] .notification-panel-card .panel-title),
+:global(:root[data-theme='dark'] .notification-panel-card .section-title),
+:global(:root[data-theme='dark'] .notification-panel-card .form-label),
+:global(:root[data-theme='dark'] .notification-panel-card .btn-outline-secondary),
+:global(:root[data-theme='dark'] .notification-panel-card .small.text-muted) {
+  color: var(--admin-text) !important;
+}
+
+:global(:root[data-theme='dark'] .notification-panel-card .panel-subtitle),
+:global(:root[data-theme='dark'] .notification-panel-card .notification-meta),
+:global(:root[data-theme='dark'] .notification-panel-card .recipient-info-head span),
+:global(:root[data-theme='dark'] .notification-panel-card .recipient-info-item span) {
+  color: var(--admin-muted) !important;
+}
+
+@media (max-width: 1199px) {
+  .summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767px) {
+  .summary-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -39,6 +39,7 @@ export const openCustomerAuthModal = (detail = {}) => {
 export const useCustomerSession = () => {
   const isAuthenticated = computed(() => Boolean(token.value));
   const hasCompletedProfile = computed(() => Boolean(profile.value?.profile));
+  const isSuspended = computed(() => Boolean(profile.value?.isSuspended));
   const unreadNotifications = computed(() => Number(notificationSummary.value.unread || 0));
 
   const applySession = (payload) => {
@@ -75,6 +76,7 @@ export const useCustomerSession = () => {
     profile,
     isAuthenticated,
     hasCompletedProfile,
+    isSuspended,
     unreadNotifications,
     notificationSummary,
     hydrateSession,

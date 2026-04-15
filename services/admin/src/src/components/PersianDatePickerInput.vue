@@ -141,8 +141,4 @@ onBeforeUnmount(destroyPicker);
   </div>
 </template>
 
-<style scoped>
-.persian-datepicker-input {
-  width: 100%;
-}
-</style>
+<style scoped src="./styles/PersianDatePickerInput.css"></style>

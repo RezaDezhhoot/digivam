@@ -329,34 +329,4 @@ onMounted(load);
   </div>
 </template>
 
-<style scoped>
-.page-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
-.page-header-info { display: flex; align-items: center; gap: 14px; }
-.page-header-icon { width: 46px; height: 46px; border-radius: 12px; background: var(--admin-primary-light); color: var(--admin-primary); display: flex; align-items: center; justify-content: center; font-size: 18px; }
-.page-title { font-size: 18px; font-weight: 700; margin: 0; }
-.page-subtitle { font-size: 13px; color: var(--admin-muted); margin: 2px 0 0; }
-.page-header-badge { padding: 10px 14px; border-radius: 999px; background: var(--admin-primary-light); color: var(--admin-primary); font-size: 13px; font-weight: 700; }
-.management-card { position: relative; overflow: hidden; }
-.filter-row { display: grid; grid-template-columns: 1.8fr repeat(3, minmax(0, 180px)) auto; gap: 12px; padding: 18px 18px 0; align-items: center; }
-.search-box { position: relative; }
-.search-icon { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--admin-muted); font-size: 13px; }
-.search-input { padding-right: 36px; }
-.compact-select { min-width: 0; }
-.check-tile { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--admin-border); background: var(--admin-surface-soft); }
-.check-tile strong { display: block; font-size: 14px; margin-bottom: 4px; }
-.check-tile small { display: block; color: var(--admin-muted); line-height: 1.8; }
-.type-chip { display: inline-flex; align-items: center; justify-content: center; padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; }
-.chip-blue { background: #e8f4fa; color: #0b5f83; }
-.chip-teal { background: #dff7f5; color: #0f766e; }
-.chip-purple { background: #f3e8ff; color: #7c3aed; }
-.chip-red { background: #ffe4e6; color: #be123c; }
-.chip-gray { background: #e5e7eb; color: #4b5563; }
-.empty-state { display: flex; flex-direction: column; align-items: center; padding: 48px 24px; color: var(--admin-muted); gap: 10px; }
-.empty-state i { font-size: 36px; opacity: 0.45; }
-@media (max-width: 1199px) {
-  .filter-row { grid-template-columns: 1fr 1fr; }
-}
-@media (max-width: 767px) {
-  .filter-row { grid-template-columns: 1fr; }
-}
-</style>
+<style scoped src="./styles/DocumentsView.css"></style>

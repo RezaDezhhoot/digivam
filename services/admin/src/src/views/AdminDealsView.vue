@@ -1,9 +1,11 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import AppPagination from '../components/AppPagination.vue';
-import { getAdminDeal, getAdminDeals, getAdminDealSummary, refreshAdminDealContract, removeAdminDealSignature, updateAdminDeal } from '../services/admin-api.js';
+import DealChatModal from '../components/DealChatModal.vue';
+import { getAdminDeal, getAdminDeals, getAdminDealMessages, getAdminDealSummary, getAdminDealUnreadCount, refreshAdminDealContract, removeAdminDealSignature, sendAdminDealMessage, updateAdminDeal } from '../services/admin-api.js';
 import { useAppToast } from '../composables/useToast.js';
+import { truncateWords } from '../../../../web/src/src/utils/str.js';
 
 const toast = useAppToast();
 const route = useRoute();
@@ -12,18 +14,22 @@ const router = useRouter();
 const summaryLoading = ref(false);
 const listLoading = ref(false);
 const detailLoading = ref(false);
+const exportLoading = ref(false);
 const page = ref(1);
 const limit = ref(10);
 const total = ref(0);
 const items = ref([]);
 const selectedItem = ref(null);
+const chatOpen = ref(false);
+const chatUnreadCount = ref(0);
+let unreadPollTimer = null;
 const activeStageTab = ref('base');
-const adminUpdateForm = ref({ status: '', step: '', actBy: '', note: '' });
+const adminUpdateForm = ref({ status: '', step: '', actBy: '', note: '', adminReviewMode: '', adminReviewReason: '' });
 const savingAdminUpdate = ref(false);
 const refreshingContract = ref(false);
 const resultHistoryOpen = ref(false);
 const summary = ref({ total: 0, inProgress: 0, failed: 0, suspended: 0, done: 0, waitingCustomer: 0, waitingBroker: 0, waitingAdmin: 0, verifyBroker: 0 });
-const filters = ref({ status: '', step: '', actBy: '', search: '' });
+const filters = ref({ status: '', step: '', actBy: '', search: '', adminReviewMode: '' });
 
 const selectedId = computed(() => Number(route.params.id || 0) || null);
 
@@ -58,7 +64,7 @@ const summaryCards = computed(() => [
   { label: 'کل معاملات', value: summary.value.total, filters: { status: '', step: '', actBy: '' }, tone: 'neutral' },
   { label: 'در جریان', value: summary.value.inProgress, filters: { status: 'in_progress', step: '', actBy: '' }, tone: 'info' },
   { label: 'منتظر کارگزار', value: summary.value.waitingBroker, filters: { status: '', step: '', actBy: 'broker' }, tone: 'warning' },
-  { label: 'منتظر ادمین', value: summary.value.waitingAdmin, filters: { status: '', step: '', actBy: 'admin' }, tone: 'accent' },
+  { label: 'در بررسی مدیریت', value: summary.value.waitingAdmin, filters: { status: '', step: '', actBy: '', adminReviewMode: 'true' }, tone: 'accent' },
   { label: 'ناموفق', value: summary.value.failed, filters: { status: 'failed', step: '', actBy: '' }, tone: 'danger' }
 ]);
 
@@ -118,6 +124,15 @@ const actorLabels = {
   customer_broker: 'مشتری و کارگزار'
 };
 
+const isNonBankingDeal = (item) => {
+  const rawType = item?.type || item?.facilityData?.type || item?.facility?.type;
+  return String(rawType || '').toLowerCase() === 'none_banking';
+};
+
+const transferStageTitle = computed(() => (isNonBankingDeal(selectedItem.value) ? 'انتقال وام' : 'انتقال امتیاز'));
+
+const isAdminTurn = (item) => String(item?.actBy || '').toLowerCase() === 'admin';
+
 const validationStages = computed(() => {
   const stages = selectedItem.value?.customerValidationData?.data?.stages;
   return Array.isArray(stages) ? stages : [];
@@ -125,18 +140,39 @@ const validationStages = computed(() => {
 
 const detailWizardSteps = computed(() => {
   if (Array.isArray(selectedItem.value?.wizardSteps) && selectedItem.value.wizardSteps.length) {
-    return selectedItem.value.wizardSteps;
+    return selectedItem.value.wizardSteps.map((item) => (
+      item.key === 'transfer'
+        ? { ...item, title: transferStageTitle.value }
+        : item
+    ));
   }
 
   return [
     { key: 'base', title: 'اطلاعات پایه معامله', description: 'اطلاعات اصلی پرونده، طرفین و خلاصه مالی معامله.', state: 'available' },
     ...stepOptions
       .filter((item) => item.value)
-      .map((item) => ({ key: item.value, title: item.label, description: 'جزئیات همین مرحله در این بخش نمایش داده می‌شود.', state: 'upcoming' }))
+      .map((item) => ({
+        key: item.value,
+        title: item.value === 'transfer' ? transferStageTitle.value : item.label,
+        description: 'جزئیات همین مرحله در این بخش نمایش داده می‌شود.',
+        state: 'upcoming'
+      }))
   ];
 });
 
 const selectedStageMeta = computed(() => detailWizardSteps.value.find((item) => item.key === activeStageTab.value) || detailWizardSteps.value[0] || null);
+const contractPreviewKey = computed(() => {
+  if (!selectedItem.value) {
+    return 'contract-preview-empty';
+  }
+
+  return [
+    selectedItem.value.id,
+    selectedItem.value.contractSignedByCustomer,
+    selectedItem.value.contractSignedByBroker,
+    selectedItem.value.updatedAt || ''
+  ].join('-');
+});
 
 const activeStageSummary = computed(() => {
   const selected = selectedStageMeta.value;
@@ -160,9 +196,12 @@ const paymentFacts = computed(() => {
   const items = Array.isArray(selectedItem.value?.paymentTypes) ? selectedItem.value.paymentTypes : [];
   return items;
 });
+const transferAttachments = computed(() => (Array.isArray(selectedItem.value?.transferData?.attachments) ? selectedItem.value.transferData.attachments : []));
 
 const resultHistoryEntries = computed(() => (Array.isArray(selectedItem.value?.resultHistory) ? [...selectedItem.value.resultHistory].reverse() : []));
 const resultHistoryCount = computed(() => resultHistoryEntries.value.length);
+const selectedAdminReview = computed(() => selectedItem.value?.adminReviewData || null);
+const getAdminReviewReason = (item) => item?.adminReviewData?.reason || 'این پرونده در حال بررسی مدیریت است.';
 
 const getValidationItemValueText = (item) => {
   if (item?.type === 'file') {
@@ -192,8 +231,8 @@ const formatDocumentValueText = (document) => {
   return String(document.value);
 };
 
-const buildQuery = () => {
-  const params = new URLSearchParams({ page: String(page.value), limit: String(limit.value) });
+const buildQuery = ({ page: nextPage = page.value, limit: nextLimit = limit.value } = {}) => {
+  const params = new URLSearchParams({ page: String(nextPage), limit: String(nextLimit) });
 
   if (filters.value.status) {
     params.set('status', filters.value.status);
@@ -211,7 +250,51 @@ const buildQuery = () => {
     params.set('search', filters.value.search);
   }
 
+  if (filters.value.adminReviewMode === 'true' || filters.value.adminReviewMode === 'false') {
+    params.set('adminReviewMode', filters.value.adminReviewMode);
+  }
+
   return `?${params.toString()}`;
+};
+
+const exportDealsToExcel = async () => {
+  exportLoading.value = true;
+  try {
+    const data = await getAdminDeals(buildQuery({ page: 1, limit: Math.max(total.value || 0, 1000) }));
+    const exportItems = Array.isArray(data.items) ? data.items : [];
+    if (!exportItems.length) {
+      toast.warning('داده‌ای برای خروجی اکسل وجود ندارد');
+      return;
+    }
+
+    const XLSX = await import('xlsx');
+    const rows = exportItems.map((item, index) => ({
+      'ردیف': index + 1,
+      'کد معامله': item.dealCode || item.id,
+      'عنوان وام': item.facility?.title || '-',
+      'مشتری': item.customer?.name || '-',
+      'موبایل مشتری': item.customer?.phone || '-',
+      'کارگزار': item.broker?.name || '-',
+      'نوع معامله': item.typeLabel || '-',
+      'وضعیت': item.statusLabel || '-',
+      'مرحله': item.stepLabel || '-',
+      'اقدام با': item.actByLabel || '-',
+      'مبلغ': Number(item.amount || 0),
+      'بررسی مدیریت': item.adminReviewMode ? 'فعال' : 'غیرفعال',
+      'دلیل بررسی مدیریت': item.adminReviewData?.reason || '-',
+      'آخرین بروزرسانی': item.updatedAtLabel || '-'
+    }));
+
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Deals');
+    XLSX.writeFile(workbook, `admin-deals-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast.success('خروجی اکسل معاملات آماده شد');
+  } catch (error) {
+    toast.error(error.message || 'ساخت خروجی اکسل با خطا مواجه شد');
+  } finally {
+    exportLoading.value = false;
+  }
 };
 
 const loadSummary = async () => {
@@ -252,7 +335,7 @@ const loadSelected = async () => {
     const data = await getAdminDeal(selectedId.value);
     selectedItem.value = data.item || null;
     activeStageTab.value = data.item?.step || 'base';
-    adminUpdateForm.value = { status: '', step: '', actBy: '', note: '' };
+    adminUpdateForm.value = { status: '', step: '', actBy: '', note: '', adminReviewMode: '', adminReviewReason: '' };
   } catch (error) {
     selectedItem.value = null;
     toast.error(error.message);
@@ -267,7 +350,13 @@ const submitAdminAction = async () => {
     return;
   }
 
-  if (!adminUpdateForm.value.status && !adminUpdateForm.value.step && !adminUpdateForm.value.actBy && !adminUpdateForm.value.note.trim()) {
+  if (
+    !adminUpdateForm.value.status &&
+    !adminUpdateForm.value.step &&
+    !adminUpdateForm.value.actBy &&
+    !adminUpdateForm.value.note.trim() &&
+    adminUpdateForm.value.adminReviewMode === ''
+  ) {
     toast.error('حداقل یکی از تغییرات یا پیام ادمین را ثبت کنید');
     return;
   }
@@ -278,12 +367,19 @@ const submitAdminAction = async () => {
       status: adminUpdateForm.value.status || undefined,
       step: adminUpdateForm.value.step || undefined,
       actBy: adminUpdateForm.value.actBy || undefined,
-      note: adminUpdateForm.value.note.trim() || undefined
+      note: adminUpdateForm.value.note.trim() || undefined,
+      adminReviewMode:
+        adminUpdateForm.value.adminReviewMode === 'true'
+          ? true
+          : adminUpdateForm.value.adminReviewMode === 'false'
+            ? false
+            : undefined,
+      adminReviewReason: adminUpdateForm.value.adminReviewReason.trim() || undefined
     });
     toast.success(data.message || 'تغییرات معامله ثبت شد');
     selectedItem.value = data.item || selectedItem.value;
     activeStageTab.value = (data.item || selectedItem.value)?.step || activeStageTab.value;
-    adminUpdateForm.value = { status: '', step: '', actBy: '', note: '' };
+    adminUpdateForm.value = { status: '', step: '', actBy: '', note: '', adminReviewMode: '', adminReviewReason: '' };
     await load({ includeSummary: true });
   } catch (error) {
     toast.error(error.message);
@@ -306,6 +402,7 @@ const refreshContract = async () => {
     const data = await refreshAdminDealContract(selectedItem.value.id);
     toast.success(data.message || 'قرارداد بازسازی شد');
     selectedItem.value = data.item || selectedItem.value;
+    await loadSelected();
   } catch (error) {
     toast.error(error.message || 'بازسازی قرارداد با خطا مواجه شد');
   } finally {
@@ -325,10 +422,96 @@ const removeSignature = async (role) => {
     const data = await removeAdminDealSignature(selectedItem.value.id, role);
     toast.success(data.message || 'امضا حذف شد');
     selectedItem.value = data.item || selectedItem.value;
+    await loadSelected();
   } catch (error) {
     toast.error(error.message || 'حذف امضا با خطا مواجه شد');
   } finally {
     removingSignature.value = '';
+  }
+};
+
+const downloadingPdf = ref(false);
+
+const createPdfExportNode = () => {
+  const html = selectedItem.value?.contractData || '';
+  const wrapper = document.createElement('div');
+  wrapper.style.position = 'fixed';
+  wrapper.style.right = '0';
+  wrapper.style.bottom = '0';
+  wrapper.style.width = '1024px';
+  wrapper.style.opacity = '0.01';
+  wrapper.style.pointerEvents = 'none';
+  wrapper.style.zIndex = '-1';
+  wrapper.setAttribute('aria-hidden', 'true');
+
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+
+  const styles = doc.querySelectorAll('style');
+  styles.forEach((style) => {
+    const clonedStyle = document.createElement('style');
+    clonedStyle.textContent = style.textContent;
+    wrapper.appendChild(clonedStyle);
+  });
+
+  const bodyContent = doc.body?.innerHTML || html;
+  const bodyDiv = document.createElement('div');
+  bodyDiv.innerHTML = bodyContent;
+  wrapper.appendChild(bodyDiv);
+
+  document.body.appendChild(wrapper);
+  return { wrapper, exportNode: bodyDiv.querySelector('.deal-contract-wrap') || bodyDiv };
+};
+
+const waitForPdfImages = async (container) => {
+  const images = Array.from(container.querySelectorAll('img') || []);
+  await Promise.all(
+    images.map(
+      (image) =>
+        new Promise((resolve) => {
+          if (image.complete) {
+            resolve();
+            return;
+          }
+          image.addEventListener('load', resolve, { once: true });
+          image.addEventListener('error', resolve, { once: true });
+        })
+    )
+  );
+};
+
+const downloadContract = async () => {
+  if (!selectedItem.value?.contractData) {
+    return;
+  }
+
+  downloadingPdf.value = true;
+  let container = null;
+
+  try {
+    const module = await import('html2pdf.js');
+    const html2pdf = module.default || module;
+    const { wrapper, exportNode } = createPdfExportNode();
+    container = wrapper;
+    await waitForPdfImages(wrapper);
+
+    await html2pdf()
+      .set({
+        margin: [0, 0, 0, 0],
+        filename: `admin-deal-contract-${selectedItem.value.id}.pdf`,
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak: { mode: ['css', 'legacy'] }
+      })
+      .from(exportNode)
+      .save();
+
+    toast.success('نسخه PDF قرارداد دانلود شد.');
+  } catch (error) {
+    toast.error(error?.message || 'دانلود PDF قرارداد با خطا مواجه شد.');
+  } finally {
+    container?.remove();
+    downloadingPdf.value = false;
   }
 };
 
@@ -357,7 +540,7 @@ const applyFilters = async () => {
 };
 
 const clearFilters = async () => {
-  filters.value = { status: '', step: '', actBy: '', search: '' };
+  filters.value = { status: '', step: '', actBy: '', search: '', adminReviewMode: '' };
   page.value = 1;
   if (selectedId.value) {
     await router.push('/deals');
@@ -379,14 +562,45 @@ watch(() => route.params.id, () => {
   loadSelected();
 });
 
+const fetchUnreadCount = async () => {
+  if (!selectedItem.value?.id) return;
+  try {
+    const data = await getAdminDealUnreadCount(selectedItem.value.id);
+    chatUnreadCount.value = data.unreadCount || 0;
+  } catch { /* silent */ }
+};
+
+const startUnreadPoll = () => {
+  stopUnreadPoll();
+  fetchUnreadCount();
+  unreadPollTimer = setInterval(fetchUnreadCount, 30000);
+};
+
+const stopUnreadPoll = () => {
+  if (unreadPollTimer) {
+    clearInterval(unreadPollTimer);
+    unreadPollTimer = null;
+  }
+};
+
+watch(() => selectedItem.value?.id, (id) => {
+  if (id) startUnreadPoll();
+  else stopUnreadPoll();
+});
+
+watch(chatOpen, (open) => {
+  if (!open) fetchUnreadCount();
+});
+
 onMounted(() => {
   load();
 });
+onUnmounted(stopUnreadPoll);
 </script>
 
 <template>
   <section class="animate-in">
-    <div class="page-header">
+    <div class="page-header d-flex align-items-center justify-content-between gap-3 flex-wrap">
       <div class="page-header-copy">
         <div class="page-header-icon"><i class="fa-solid fa-briefcase"></i></div>
         <div>
@@ -394,6 +608,11 @@ onMounted(() => {
           <p class="page-header-desc">پایش همه پرونده های معامله، صف اقدام و وضعیت مدارک در یک نمای متمرکز.</p>
         </div>
       </div>
+      <button class="btn btn-outline-secondary" :disabled="exportLoading" @click="exportDealsToExcel">
+        <i v-if="exportLoading" class="fa-solid fa-spinner fa-spin me-1"></i>
+        <i v-else class="fa-solid fa-file-excel me-1"></i>
+        خروجی اکسل
+      </button>
     </div>
 
     <div v-if="!selectedId" class="summary-grid mt-3" :class="{ 'summary-grid-loading': summaryLoading }">
@@ -422,6 +641,11 @@ onMounted(() => {
         <select v-model="filters.actBy" class="form-select">
           <option v-for="item in actByOptions" :key="item.value || 'actby'" :value="item.value">{{ item.label }}</option>
         </select>
+        <select v-model="filters.adminReviewMode" class="form-select">
+          <option value="">همه وضعیت‌های مدیریت</option>
+          <option value="true">فقط در بررسی مدیریت</option>
+          <option value="false">خارج از بررسی مدیریت</option>
+        </select>
         <div class="filter-actions">
           <button class="btn btn-primary" @click="applyFilters">اعمال</button>
           <button class="btn btn-outline-secondary" @click="clearFilters">پاکسازی</button>
@@ -442,7 +666,7 @@ onMounted(() => {
               :key="item.id"
               type="button"
               class="deal-card"
-              :class="{ active: selectedId === item.id }"
+              :class="{ active: selectedId === item.id, 'act-by-marked': isAdminTurn(item) }"
               @click="openItem(item.id)"
             >
               <div class="deal-card-head">
@@ -453,6 +677,8 @@ onMounted(() => {
               <div class="deal-card-meta">{{ item.customer?.name || 'مشتری' }} | {{ item.broker?.name || 'کارگزار' }}</div>
               <div class="deal-card-meta">{{ item.typeLabel || item.facility?.typeLabel || '-' }}</div>
               <div class="deal-card-meta">{{ item.stepLabel }} | اقدام: {{ item.actByLabel }}</div>
+              <div v-if="isAdminTurn(item)" class="deal-card-meta"><span class="act-by-mark-chip">نوبت اقدام شما</span></div>
+              <div v-if="item.adminReviewMode" class="deal-card-meta admin-review-note">در بررسی مدیریت: {{ getAdminReviewReason(item) }}</div>
               <div class="deal-card-meta">{{ formatMoney(item.amount) }} | {{ item.updatedAtLabel }}</div>
             </button>
           </div>
@@ -476,10 +702,17 @@ onMounted(() => {
             <h2 class="detail-title">{{ selectedItem.facility?.title || 'پرونده معامله' }}</h2>
             <p class="detail-subtitle">{{ selectedItem.customer?.name || 'مشتری' }} | {{ selectedItem.broker?.name || 'کارگزار' }}</p>
           </div>
-          <button class="btn btn-outline-secondary btn-sm" @click="closeDetail">
-            <i class="fa-solid fa-arrow-right me-1"></i>
-            بازگشت به فهرست
-          </button>
+          <div class="detail-head-actions">
+            <button class="deal-chat-fab" title="گفتگوی معامله" @click="chatOpen = true">
+              <i class="fa-solid fa-comments me-1"></i>
+              گفتگو
+              <span v-if="chatUnreadCount" class="deal-chat-badge">{{ chatUnreadCount }}</span>
+            </button>
+            <button class="btn btn-outline-secondary btn-sm" @click="closeDetail">
+              <i class="fa-solid fa-arrow-right me-1"></i>
+              بازگشت به فهرست
+            </button>
+          </div>
         </div>
 
         <div class="detail-grid">
@@ -487,13 +720,25 @@ onMounted(() => {
           <div class="detail-stat"><span>مرحله</span><strong>{{ selectedItem.stepLabel }}</strong></div>
           <div class="detail-stat"><span>اقدام با</span><strong>{{ selectedItem.actByLabel }}</strong></div>
           <div class="detail-stat"><span>مبلغ درخواست</span><strong>{{ formatMoney(selectedItem.amount) }}</strong></div>
+          <div class="detail-stat"><span>بررسی مدیریت</span><strong>{{ selectedItem.adminReviewMode ? 'فعال' : 'غیرفعال' }}</strong></div>
+        </div>
+
+        <div v-if="selectedAdminReview && selectedItem.adminReviewMode" class="admin-review-banner mt-3" :class="{ active: selectedItem.adminReviewMode }">
+          <div>
+            <strong>{{ selectedItem.adminReviewMode ? 'پرونده در حال بررسی مدیریت است' : 'آخرین داده ثبت‌شده برای بررسی مدیریت' }}</strong>
+            <p>{{ selectedAdminReview.reason || 'دلیلی ثبت نشده است.' }}</p>
+          </div>
+          <div class="admin-review-banner-meta">
+            <span>درخواست‌دهنده: {{ selectedAdminReview.requestedByLabel || '-' }}</span>
+            <span>زمان ثبت: {{ selectedAdminReview.requestedAtLabel || '-' }}</span>
+          </div>
         </div>
 
         <div class="section-card mt-3">
           <div class="section-head">
             <div>
               <h3 class="section-title">کنترل مستقیم معامله</h3>
-              <p class="section-subtitle">ادمین می‌تواند وضعیت، مرحله، صف اقدام و پیام این پرونده را از همین بخش تغییر دهد.</p>
+              <p class="section-subtitle">ادمین می‌تواند وضعیت، مرحله، صف اقدام، پیام پرونده و ورود یا خروج از بررسی مدیریت را از همین بخش کنترل کند.</p>
             </div>
           </div>
 
@@ -510,9 +755,15 @@ onMounted(() => {
               <option value="">بدون تغییر صف اقدام</option>
               <option v-for="item in actByOptions.filter((entry) => entry.value)" :key="`manage-actby-${item.value}`" :value="item.value">{{ item.label }}</option>
             </select>
+            <select v-model="adminUpdateForm.adminReviewMode" class="form-select">
+              <option value="">بدون تغییر بررسی مدیریت</option>
+              <option value="true">ورود به بررسی مدیریت</option>
+              <option value="false">خروج از بررسی مدیریت</option>
+            </select>
           </div>
 
           <textarea v-model="adminUpdateForm.note" class="form-control mt-3" rows="3" placeholder="پیام یا توضیح ادمین برای این پرونده"></textarea>
+          <textarea v-model="adminUpdateForm.adminReviewReason" class="form-control mt-3" rows="3" placeholder="دلیل بررسی مدیریت یا توضیح آزادسازی پرونده"></textarea>
 
           <div class="review-actions mt-3">
             <button class="btn btn-primary" :disabled="savingAdminUpdate" @click="submitAdminAction">
@@ -588,6 +839,7 @@ onMounted(() => {
             <div><span>قسط ماهانه</span><strong>{{ formatMoney(selectedItem.monthlyInstallmentAmount) }}</strong></div>
             <div><span>سود کل</span><strong>{{ formatMoney(selectedItem.totalProfit) }}</strong></div>
             <div><span>جمع بازپرداخت</span><strong>{{ formatMoney(selectedItem.totalAmount) }}</strong></div>
+            <div v-if="selectedItem.brokerConfirmationAmount"><span>کاهش اعتبار کسرشده</span><strong>{{ formatMoney(selectedItem.brokerConfirmationAmount) }}</strong></div>
             <div><span>ثبت اولیه</span><strong>{{ selectedItem.createdAtLabel }}</strong></div>
             <div><span>آخرین بروزرسانی</span><strong>{{ selectedItem.updatedAtLabel }}</strong></div>
             <div><span>ارسال مدارک</span><strong>{{ selectedItem.submittedDocumentsAtLabel }}</strong></div>
@@ -611,7 +863,7 @@ onMounted(() => {
             <div>
               <span>فایل خوداظهاری</span>
               <strong>
-                <a v-if="selectedItem.customerValidationData.selfValidationFileUrl" class="validation-file-link" :href="selectedItem.customerValidationData.selfValidationFileUrl" target="_blank" rel="noreferrer">
+                <a v-if="selectedItem.customerValidationData.selfValidationFileUrl" class="validation-file-link" :href="selectedItem.customerValidationData.selfValidationFileDownloadUrl || selectedItem.customerValidationData.selfValidationFileUrl" download rel="noreferrer">
                   {{ selectedItem.customerValidationData.selfValidationFileName || 'مشاهده فایل' }}
                 </a>
                 <template v-else>-</template>
@@ -620,7 +872,7 @@ onMounted(() => {
             <div>
               <span>گزارش نهایی اعتبارسنجی</span>
               <strong>
-                <a v-if="selectedItem.customerValidationData.adminAttachmentUrl" class="validation-file-link" :href="selectedItem.customerValidationData.adminAttachmentUrl" target="_blank" rel="noreferrer">
+                <a v-if="selectedItem.customerValidationData.adminAttachmentUrl" class="validation-file-link" :href="selectedItem.customerValidationData.adminAttachmentDownloadUrl || selectedItem.customerValidationData.adminAttachmentUrl" download rel="noreferrer">
                   {{ selectedItem.customerValidationData.adminAttachmentFileName || 'دانلود گزارش نهایی' }}
                 </a>
                 <template v-else>-</template>
@@ -648,7 +900,7 @@ onMounted(() => {
                     <small>{{ entry.typeLabel || entry.categoryLabel || 'داده ثبت‌شده' }}</small>
                   </div>
                   <div class="validation-stage-value">
-                    <a v-if="entry.type === 'file' && entry.value?.url" class="btn btn-sm btn-outline-secondary" :href="entry.value.url" target="_blank" rel="noreferrer">
+                    <a v-if="entry.type === 'file' && entry.value?.url" class="btn btn-sm btn-outline-secondary" :href="entry.value.downloadUrl || entry.value.url" download rel="noreferrer">
                       <i class="fa-solid fa-paperclip me-1"></i>
                       {{ entry.value.fileName || 'مشاهده فایل' }}
                     </a>
@@ -674,9 +926,9 @@ onMounted(() => {
               </div>
               <div class="document-value">
                 <template v-if="document.type === 'file' && document.value?.url">
-                  <a class="btn btn-sm btn-outline-secondary" :href="document.value.url" target="_blank" rel="noreferrer">
+                  <a class="btn btn-sm btn-outline-secondary" :href="document.value.downloadUrl || document.value.url" download rel="noreferrer">
                     <i class="fa-solid fa-paperclip me-1"></i>
-                    {{ document.value.fileName || 'مشاهده فایل' }}
+                    {{ truncateWords(document.value.fileName || 'مشاهده فایل') }}
                   </a>
                 </template>
                 <template v-else-if="document.value !== null && document.value !== undefined && document.value !== ''">
@@ -695,16 +947,58 @@ onMounted(() => {
               <h3 class="section-title">جزئیات قرارداد</h3>
               <p class="section-subtitle">روش‌های پرداخت و نسخه فعلی قرارداد در این مرحله نمایش داده می‌شود.</p>
             </div>
-            <button v-if="selectedItem.contractData" class="btn btn-sm btn-outline-secondary" :disabled="refreshingContract" @click="refreshContract">
-              <i class="fa-solid fa-arrows-rotate" :class="{ 'fa-spin': refreshingContract }"></i>
-              {{ refreshingContract ? 'در حال بازسازی...' : 'بازسازی قرارداد' }}
-            </button>
+            <div v-if="selectedItem.contractData" class="d-flex gap-2">
+              <button class="btn btn-sm btn-outline-secondary" :disabled="downloadingPdf" @click="downloadContract">
+                <i class="fa-solid fa-file-pdf" :class="{ 'fa-spin': downloadingPdf }"></i>
+                {{ downloadingPdf ? 'در حال آماده‌سازی...' : 'دانلود PDF' }}
+              </button>
+              <button class="btn btn-sm btn-outline-secondary" :disabled="refreshingContract" @click="refreshContract">
+                <i class="fa-solid fa-arrows-rotate" :class="{ 'fa-spin': refreshingContract }"></i>
+                {{ refreshingContract ? 'در حال بازسازی...' : 'بازسازی قرارداد' }}
+              </button>
+            </div>
           </div>
 
-          <div v-if="paymentFacts.length" class="meta-grid">
-            <div v-for="item in paymentFacts" :key="item.id || item.paymentType">
-              <span>{{ item.paymentTypeLabel }}</span>
-              <strong>{{ formatMoney(item.amount) }}</strong>
+          <div v-if="paymentFacts.length" class="payment-types-list">
+            <div v-for="item in paymentFacts" :key="item.id || item.paymentType" class="payment-type-card">
+              <div class="payment-type-head">
+                <strong>{{ item.paymentTypeLabel }}</strong>
+                <span class="status-pill" :class="item.status === 'done' ? 'status-pill-done' : 'status-pill-pending'">{{ item.statusLabel || (item.status === 'done' ? 'انجام شد' : 'در انتظار') }}</span>
+              </div>
+              <div class="meta-grid">
+                <div>
+                  <span>مبلغ</span>
+                  <strong>{{ formatMoney(item.amount) }}</strong>
+                </div>
+                <div v-if="item.values?.authority">
+                  <span>کد پیگیری</span>
+                  <strong>{{ item.values.authority }}</strong>
+                </div>
+                <div v-if="item.values?.paidAt">
+                  <span>تاریخ پرداخت</span>
+                  <strong>{{ formatDate(item.values.paidAt) }}</strong>
+                </div>
+                <div v-if="item.doneAtLabel">
+                  <span>تاریخ تکمیل</span>
+                  <strong>{{ item.doneAtLabel }}</strong>
+                </div>
+                <div v-if="item.values?.checkDate">
+                  <span>تاریخ چک</span>
+                  <strong>{{ formatJalaliDate(item.values.checkDate) }}</strong>
+                </div>
+                <div v-if="item.values?.fullName">
+                  <span>نام صاحب چک</span>
+                  <strong>{{ item.values.fullName }}</strong>
+                </div>
+                <div v-if="item.values?.nationalCode">
+                  <span>کد ملی</span>
+                  <strong>{{ item.values.nationalCode }}</strong>
+                </div>
+                <div v-if="item.paymentType === 'check' && item.values">
+                  <span>ثبت در صیاد</span>
+                  <strong>{{ item.values.sayadRegistered ? 'بله' : 'خیر' }}</strong>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -720,7 +1014,7 @@ onMounted(() => {
           </div>
 
           <div v-if="selectedItem.contractData" class="contract-admin-preview mt-3">
-            <iframe class="contract-admin-frame" :srcdoc="selectedItem.contractData"></iframe>
+            <iframe :key="contractPreviewKey" class="contract-admin-frame" :srcdoc="selectedItem.contractData"></iframe>
           </div>
         </div>
 
@@ -732,11 +1026,60 @@ onMounted(() => {
             </div>
           </div>
 
-          <div v-if="paymentFacts.length" class="meta-grid">
-            <div v-for="item in paymentFacts" :key="`payment-${item.id || item.paymentType}`">
-              <span>{{ item.paymentTypeLabel }}</span>
-              <strong>{{ formatMoney(item.amount) }}</strong>
+          <div v-if="paymentFacts.length" class="payment-types-list">
+            <div v-for="item in paymentFacts" :key="`payment-${item.id || item.paymentType}`" class="payment-type-card">
+              <div class="payment-type-head">
+                <strong>{{ item.paymentTypeLabel }}</strong>
+                <span class="status-pill" :class="item.status === 'done' ? 'status-pill-done' : 'status-pill-pending'">{{ item.statusLabel || (item.status === 'done' ? 'انجام شد' : 'در انتظار') }}</span>
+              </div>
+              <div class="meta-grid">
+                <div>
+                  <span>مبلغ</span>
+                  <strong>{{ formatMoney(item.amount) }}</strong>
+                </div>
+                <div v-if="item.values?.authority">
+                  <span>کد پیگیری</span>
+                  <strong>{{ item.values.authority }}</strong>
+                </div>
+                <div v-if="item.values?.paidAt">
+                  <span>تاریخ پرداخت</span>
+                  <strong>{{ formatDate(item.values.paidAt) }}</strong>
+                </div>
+                <div v-if="item.doneAtLabel">
+                  <span>تاریخ تکمیل</span>
+                  <strong>{{ item.doneAtLabel }}</strong>
+                </div>
+                <div v-if="item.values?.checkDate">
+                  <span>تاریخ چک</span>
+                  <strong>{{ formatJalaliDate(item.values.checkDate) }}</strong>
+                </div>
+                <div v-if="item.values?.fullName">
+                  <span>نام صاحب چک</span>
+                  <strong>{{ item.values.fullName }}</strong>
+                </div>
+                <div v-if="item.values?.nationalCode">
+                  <span>کد ملی</span>
+                  <strong>{{ item.values.nationalCode }}</strong>
+                </div>
+                <div v-if="item.paymentType === 'check' && item.values">
+                  <span>ثبت در صیاد</span>
+                  <strong>{{ item.values.sayadRegistered ? 'بله' : 'خیر' }}</strong>
+                </div>
+                <div v-if="item.description">
+                  <span>توضیحات</span>
+                  <strong>{{ item.description }}</strong>
+                </div>
+              </div>
+              <div v-if="item.values?.files?.length" class="payment-files-list">
+                <a v-for="file in item.values.files" :key="file.fileId" class="payment-file-link" :href="file.downloadUrl || file.fileUrl" download rel="noreferrer">
+                  <i class="fa-solid fa-paperclip"></i>
+                  {{ file.fileName }}
+                </a>
+              </div>
             </div>
+          </div>
+
+          <div v-if="paymentFacts.length" class="meta-grid mt-3">
             <div>
               <span>امضای مشتری</span>
               <strong>{{ selectedItem.contractSignedByCustomer ? 'ثبت شده' : 'ثبت نشده' }}</strong>
@@ -749,708 +1092,58 @@ onMounted(() => {
           <div v-else class="empty-inline">هنوز روش پرداختی برای این پرونده ثبت نشده است.</div>
         </div>
 
+        <div v-if="['transfer', 'verify_customer', 'finished'].includes(activeStageTab) && selectedItem.transferData" class="section-card mt-3">
+          <div class="section-head">
+            <div>
+              <h3 class="section-title">اطلاعات مرحله {{ transferStageTitle }}</h3>
+              <p class="section-subtitle">توضیحات و فایل‌های ثبت‌شده توسط کارگزار برای مرحله {{ transferStageTitle }}.</p>
+            </div>
+          </div>
+
+          <div class="validation-result-box">
+            {{ selectedItem.transferData.description }}
+          </div>
+
+          <div class="meta-grid mt-3">
+            <div>
+              <span>ثبت‌کننده</span>
+              <strong>{{ selectedItem.transferData.submittedBy?.name || 'کارگزار' }}</strong>
+            </div>
+            <div>
+              <span>زمان ثبت</span>
+              <strong>{{ selectedItem.transferData.submittedAtLabel || '-' }}</strong>
+            </div>
+          </div>
+
+          <div v-if="transferAttachments.length" class="document-list mt-3">
+            <div v-for="file in transferAttachments" :key="file.fileId" class="document-item">
+              <div>
+                <strong>{{ file.fileName }}</strong>
+                <p>{{ formatNumber(Math.round((file.size || 0) / 1024)) }} کیلوبایت</p>
+              </div>
+              <div class="document-value">
+                <a class="btn btn-sm btn-outline-secondary" :href="file.downloadUrl || file.url" download rel="noreferrer">
+                  <i class="fa-solid fa-paperclip me-1"></i>
+                  {{ file.title || file.fileName || 'دانلود فایل' }}
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+
       
       </div>
     </div>
+
+    <DealChatModal
+      v-if="chatOpen && selectedItem?.id"
+      :deal-id="selectedItem.id"
+      current-sender-type="admin"
+      :get-messages="getAdminDealMessages"
+      :send-message="sendAdminDealMessage"
+      @close="chatOpen = false"
+    />
   </section>
 </template>
 
-<style scoped>
-.page-header,
-.content-card,
-.section-card,
-.empty-card {
-  background: var(--admin-surface);
-  border: 1px solid var(--admin-border);
-  border-radius: 16px;
-  box-shadow: var(--admin-shadow);
-}
-
-.page-header {
-  padding: 22px;
-}
-
-.page-header-copy {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.page-header-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
-  background: var(--admin-primary-light);
-  color: var(--admin-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-}
-
-.page-header-title {
-  font-size: 18px;
-  font-weight: 800;
-  margin: 0;
-}
-
-.page-header-desc {
-  margin: 4px 0 0;
-  color: var(--admin-muted);
-  font-size: 13px;
-}
-
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.summary-card {
-  border: 1px solid var(--admin-border);
-  border-radius: 16px;
-  padding: 16px;
-  text-align: right;
-  background: var(--admin-surface);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.summary-card span {
-  font-size: 12px;
-  color: var(--admin-muted);
-}
-
-.summary-card strong {
-  font-size: 26px;
-}
-
-.summary-card-info { background: rgba(59, 130, 246, 0.14); }
-.summary-card-warning { background: rgba(245, 158, 11, 0.14); }
-.summary-card-accent { background: rgba(99, 102, 241, 0.14); }
-.summary-card-danger { background: rgba(239, 68, 68, 0.14); }
-
-.content-card {
-  padding: 18px;
-}
-
-.filter-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.filter-row .form-select {
-  max-width: 220px;
-}
-
-.filter-actions {
-  display: flex;
-  gap: 8px;
-  margin-inline-start: auto;
-}
-
-.board-grid {
-  display: block;
-}
-
-.list-pane,
-.detail-pane {
-  min-width: 0;
-  position: relative;
-}
-
-.deal-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.deal-card {
-  width: 100%;
-  text-align: right;
-  border: 1px solid var(--admin-border);
-  border-radius: 14px;
-  background: var(--admin-surface-soft);
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.deal-card.active,
-.deal-card:hover {
-  border-color: rgba(11, 95, 131, 0.3);
-}
-
-.deal-card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.deal-card-title {
-  font-size: 15px;
-  font-weight: 800;
-  margin: 0;
-}
-
-.deal-card-meta,
-.history-date,
-.history-text,
-.empty-inline {
-  font-size: 12px;
-  color: var(--admin-muted);
-}
-
-.detail-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.detail-kicker {
-  margin: 0 0 6px;
-  color: var(--admin-muted);
-  font-size: 12px;
-}
-
-.detail-title {
-  font-size: 20px;
-  font-weight: 800;
-  margin: 0 0 6px;
-}
-
-.detail-subtitle {
-  margin: 0;
-  color: var(--admin-muted);
-  font-size: 13px;
-}
-
-.detail-route-shell {
-  display: grid;
-  gap: 18px;
-}
-
-.detail-route-pane {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
-.detail-route-head {
-  padding: 22px;
-  border-radius: 18px;
-  border: 1px solid var(--admin-border);
-  background: linear-gradient(180deg, var(--admin-surface) 0%, var(--admin-surface-soft) 100%);
-  box-shadow: var(--admin-shadow);
-}
-
-.detail-route-empty {
-  min-height: 320px;
-}
-
-.detail-grid,
-.meta-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.admin-action-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.deal-stage-wizard {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 0;
-  align-items: flex-start;
-}
-
-.detail-stat,
-.meta-grid div,
-.document-item,
-.history-item {
-  border: 1px solid var(--admin-border);
-  border-radius: 14px;
-  background: var(--admin-surface-soft);
-}
-
-.detail-stat,
-.meta-grid div {
-  padding: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.detail-stat span,
-.meta-grid span {
-  font-size: 12px;
-  color: var(--admin-muted);
-}
-
-.detail-stat strong,
-.meta-grid strong {
-  font-size: 14px;
-}
-
-.section-card {
-  padding: 18px;
-}
-
-.deal-stage-step {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 0;
-  border: none;
-  background: transparent;
-  flex: 1;
-  position: relative;
-  cursor: pointer;
-  transition: transform 0.2s ease;
-}
-
-.deal-stage-step:active {
-  transform: scale(0.96);
-}
-
-.deal-stage-step::before {
-  content: '';
-  position: absolute;
-  top: 16px;
-  left: calc(50% + 18px);
-  right: -50%;
-  height: 3px;
-  border-radius: 2px;
-  background: var(--admin-border);
-  z-index: 0;
-  transition: background 0.35s ease;
-}
-
-.deal-stage-step:first-child::before {
-  display: none;
-}
-
-.deal-stage-step.state-done::before,
-.deal-stage-step.state-completed::before {
-  background: rgba(34, 197, 94, 0.45);
-}
-
-.deal-stage-step.state-current::before {
-  background: rgba(11, 95, 131, 0.35);
-}
-
-.deal-stage-circle {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: 900;
-  position: relative;
-  z-index: 1;
-  border: 2.5px solid var(--admin-border);
-  background: var(--admin-surface, #fff);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-}
-
-.deal-stage-step.state-done .deal-stage-circle,
-.deal-stage-step.state-completed .deal-stage-circle {
-  background: rgba(34, 197, 94, 0.12);
-  border-color: rgba(34, 197, 94, 0.55);
-  color: #15803d;
-}
-
-.deal-stage-step.state-current .deal-stage-circle {
-  background: rgba(11, 95, 131, 0.1);
-  border-color: rgba(11, 95, 131, 0.55);
-  color: #0b5f83;
-}
-
-.deal-stage-step.state-failed .deal-stage-circle {
-  background: rgba(239, 68, 68, 0.1);
-  border-color: rgba(239, 68, 68, 0.55);
-  color: #b91c1c;
-}
-
-.deal-stage-step.state-paused .deal-stage-circle {
-  background: rgba(245, 158, 11, 0.1);
-  border-color: rgba(245, 158, 11, 0.55);
-  color: #b45309;
-}
-
-.deal-stage-step.active .deal-stage-circle {
-  box-shadow: 0 0 0 4px rgba(11, 95, 131, 0.12), 0 2px 12px rgba(11, 95, 131, 0.15);
-  transform: scale(1.1);
-}
-
-.deal-stage-step strong {
-  font-size: 10px;
-  font-weight: 800;
-  text-align: center;
-  line-height: 1.3;
-  max-width: 72px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--admin-muted);
-  transition: color 0.2s ease;
-}
-
-.deal-stage-step.active strong {
-  color: #0b5f83;
-}
-
-.deal-stage-step.state-done strong,
-.deal-stage-step.state-completed strong {
-  color: #15803d;
-}
-
-.deal-stage-spotlight,
-.contract-admin-preview {
-  margin-top: 16px;
-  border: 1px solid var(--admin-border);
-  border-radius: 16px;
-  background: var(--admin-surface-soft);
-}
-
-.signature-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.deal-stage-spotlight {
-  padding: 16px;
-}
-
-.deal-stage-spotlight strong {
-  display: block;
-  font-size: 14px;
-  font-weight: 800;
-}
-
-.deal-stage-spotlight p {
-  margin: 8px 0 0;
-  font-size: 12px;
-  color: var(--admin-muted);
-  line-height: 1.9;
-}
-
-.contract-admin-preview {
-  padding: 8px;
-  min-height: 560px;
-}
-
-.contract-admin-frame {
-  width: 100%;
-  min-height: 540px;
-  border: 0;
-  border-radius: 12px;
-  background: #fff;
-}
-
-.section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.section-title {
-  font-size: 15px;
-  font-weight: 800;
-  margin: 0 0 4px;
-}
-
-.section-subtitle {
-  font-size: 12px;
-  color: var(--admin-muted);
-  margin: 0;
-}
-
-.document-list,
-.history-list,
-.validation-stage-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.document-item,
-.history-item,
-.validation-stage-card,
-.validation-stage-item {
-  padding: 14px 16px;
-}
-
-.document-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.document-item p {
-  margin: 6px 0 0;
-  font-size: 12px;
-  color: var(--admin-muted);
-}
-
-.document-value {
-  max-width: 40%;
-  text-align: left;
-}
-
-.document-text {
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.history-item {
-  display: flex;
-  gap: 12px;
-}
-
-.history-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 999px;
-  background: var(--admin-primary);
-  margin-top: 7px;
-  flex-shrink: 0;
-}
-
-.history-title {
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.validation-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.validation-file-link {
-  color: var(--admin-primary);
-}
-
-.validation-result-box {
-  margin-top: 14px;
-  border: 1px solid var(--admin-border);
-  border-radius: 14px;
-  background: var(--admin-surface-soft);
-  padding: 14px 16px;
-  font-size: 13px;
-}
-
-.validation-stage-card {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  border: 1px solid var(--admin-border);
-  border-radius: 14px;
-  background: var(--admin-surface-soft);
-}
-
-.validation-stage-head strong,
-.validation-stage-item span {
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.validation-stage-head p,
-.validation-stage-item small {
-  margin: 4px 0 0;
-  color: var(--admin-muted);
-  font-size: 12px;
-}
-
-.validation-stage-items {
-  display: grid;
-  gap: 10px;
-}
-
-.validation-stage-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  border: 1px solid var(--admin-border);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.35);
-}
-
-.validation-stage-value {
-  max-width: 48%;
-  text-align: left;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.status-pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 12px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.status-pill-in_progress { background: #eff6ff; color: #1d4ed8; }
-.status-pill-done { background: #dcfce7; color: #166534; }
-.status-pill-failed { background: #ffe4e6; color: #be123c; }
-.status-pill-suspended { background: #f3f4f6; color: #6b7280; }
-.status-pill-empty { background: #f3f4f6; color: #6b7280; }
-
-.spinner-overlay,
-.detail-empty,
-.empty-card {
-  min-height: 220px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-}
-
-.empty-icon {
-  font-size: 42px;
-  color: var(--admin-muted);
-  opacity: 0.32;
-  margin-bottom: 14px;
-}
-
-.empty-card h3 {
-  font-size: 16px;
-  font-weight: 800;
-  margin-bottom: 6px;
-}
-
-.empty-card p {
-  margin: 0;
-  max-width: 380px;
-  color: var(--admin-muted);
-  font-size: 13px;
-}
-
-.history-dropup-wrap {
-  position: relative;
-}
-
-.history-dropup-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 42px;
-  padding: 0 16px;
-  border-radius: 14px;
-  border: 1px solid var(--admin-border);
-  background: var(--admin-surface-soft);
-  color: var(--admin-text, #1e293b);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.history-dropup-toggle:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.history-dropup-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--admin-primary, #0b5f83);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 900;
-}
-
-.history-dropup-panel {
-  position: absolute;
-  inset: calc(100% + 10px) 0 auto 0;
-  max-height: 380px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px;
-  border-radius: 18px;
-  border: 1px solid var(--admin-border);
-  background: var(--admin-surface);
-  box-shadow: var(--admin-shadow);
-  z-index: 10;
-}
-
-.dropup-fade-enter-active,
-.dropup-fade-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
-}
-
-.dropup-fade-enter-from,
-.dropup-fade-leave-to {
-  opacity: 0;
-  transform: translateY(-8px);
-}
-
-@media (max-width: 1199px) {
-  .summary-grid,
-  .detail-grid,
-  .meta-grid,
-  .validation-grid,
-  .admin-action-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 767px) {
-  .summary-grid,
-  .detail-grid,
-  .meta-grid,
-  .validation-grid,
-  .admin-action-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .filter-row,
-  .detail-head,
-  .detail-route-head,
-  .document-item,
-  .validation-stage-item,
-  .page-header-copy {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .filter-row .form-select,
-  .document-value,
-  .validation-stage-value {
-    max-width: none;
-  }
-  .filter-actions {
-    margin-inline-start: 0;
-  }
-}
-</style>
+<style scoped src="./styles/AdminDealsView.css"></style>

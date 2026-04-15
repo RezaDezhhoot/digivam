@@ -10,7 +10,7 @@ import {
 
 export const customerTicketRouter = Router();
 
-customerTicketRouter.use('/tickets', requireAuth('customer'));
+customerTicketRouter.use('/tickets', requireAuth('customer', { allowSuspended: true }));
 customerTicketRouter.get('/tickets', listCustomerTickets);
 customerTicketRouter.post('/tickets', createCustomerTicketValidator, validateRequest, createCustomerTicket);
 customerTicketRouter.get('/tickets/:id', customerTicketIdValidator, validateRequest, getCustomerTicketThread);

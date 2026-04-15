@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import LoanDiscoveryFilters from '../components/LoanDiscoveryFilters.vue';
 import LoanOfferCard from '../components/LoanOfferCard.vue';
 import enamadImage from '../assets/images/figma-enamad.png';
@@ -14,6 +14,9 @@ import {
 } from '../composables/useLoanDiscovery.js';
 import { getWebHomeData } from '../services/web-loan.api.js';
 import { applySeo, resetSeo } from '../utils/seo.js';
+import { useSiteConfig } from '../composables/useSiteConfig.js';
+
+const { setSiteConfig } = useSiteConfig();
 
 const journeyHighlights = [
   'فقط فرصت‌های تاییدشده و آماده نمایش',
@@ -62,6 +65,12 @@ const syncDesktopState = () => {
   }
 };
 
+const syncBodyScrollLock = (locked) => {
+  document.documentElement.style.overflow = locked ? 'hidden' : '';
+  document.body.style.overflow = locked ? 'hidden' : '';
+  document.body.style.touchAction = locked ? 'none' : '';
+};
+
 const scrollToDiscovery = async () => {
   await nextTick();
   const element = document.getElementById('home-discovery-grid');
@@ -94,6 +103,7 @@ const load = async (query = {}, options = {}) => {
       ...(data.site || {}),
       featuredSpotlight: data.featuredSpotlight || null
     };
+    setSiteConfig(data.site);
     summary.value = data.summary || summary.value;
     categories.value = ['همه وام ها', ...(data.categories || [])];
     guarantees.value = ['همه', ...(data.guarantees || [])];
@@ -143,7 +153,12 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('resize', syncDesktopState);
   clearTimeout(filterDebounce);
+  syncBodyScrollLock(false);
   resetSeo();
+});
+
+watch(mobileFiltersOpen, (value) => {
+  syncBodyScrollLock(value && window.innerWidth < 992);
 });
 </script>
 
@@ -250,10 +265,8 @@ onUnmounted(() => {
 
           <div v-if="!loading && !errorText" class="home-results-toolbar d-none d-md-block">
             <div>
-              <strong>{{ formatNumber(loans.length) }} فرصت</strong>
-              <span>{{ filterSummaryText }}</span>
+              <strong>{{ formatNumber(loans.length) }} مورد یافت شد</strong>
             </div>
-            <router-link to="/market" class="home-toolbar-link">بازار کامل امتیازها</router-link>
           </div>
 
           <div v-if="loading" class="home-empty-state">
@@ -310,529 +323,4 @@ onUnmounted(() => {
   </div>
 </template>
 
-<style scoped>
-.home-view {
-  position: relative;
-  padding-bottom: 28px;
-}
-
-.home-hero {
-  padding: 16px 0 10px;
-}
-
-.home-hero-shell {
-  position: relative;
-  overflow: hidden;
-  display: grid;
-  grid-template-columns: minmax(0, 1.3fr) 340px;
-  gap: 16px;
-  padding: 28px;
-  border-radius: 32px;
-  background:
-    radial-gradient(circle at top right, rgba(255, 255, 255, 0.16), transparent 28%),
-    linear-gradient(135deg, #6a0000 0%, #9f0909 38%, #c81c1c 72%, #f04e4e 100%);
-  color: #fff;
-  box-shadow: 0 32px 90px rgba(115, 0, 0, 0.26);
-}
-
-.home-hero-kicker,
-.home-results-kicker,
-.home-spotlight-kicker {
-  display: inline-flex;
-  align-items: center;
-  min-height: 30px;
-  padding: 0 12px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 800;
-}
-
-.home-hero-kicker,
-.home-spotlight-kicker {
-  background: rgba(255, 255, 255, 0.14);
-}
-
-.home-results-kicker {
-  background: rgba(193, 18, 18, 0.08);
-  color: var(--web-primary);
-}
-
-.home-hero-copy h1 {
-  margin: 14px 0 10px;
-  font-size: clamp(27px, 3.8vw, 44px);
-  line-height: 1.22;
-  font-weight: 900;
-}
-
-.home-hero-copy p {
-  max-width: 720px;
-  margin: 0;
-  color: rgba(255, 255, 255, 0.84);
-  line-height: 1.82;
-  font-size: 14px;
-}
-
-.home-hero-actions,
-.home-trust-strip,
-.home-results-head-actions,
-.home-results-toolbar,
-.home-footer-link-list {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.home-hero-actions {
-  margin-top: 18px;
-}
-
-.home-primary-link,
-.home-secondary-link,
-.home-toolbar-link,
-.home-open-filters,
-.home-spotlight-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 42px;
-  padding: 0 15px;
-  border-radius: 15px;
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.home-primary-link,
-.home-spotlight-link {
-  background: #fff;
-  color: #7a0000;
-  box-shadow: 0 16px 34px rgba(45, 8, 8, 0.18);
-}
-
-.home-primary-link.button-like {
-  border: none;
-}
-
-.home-secondary-link {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-}
-
-.home-trust-strip {
-  margin-top: 12px;
-}
-
-.home-trust-strip span,
-.home-active-filter-chip {
-  min-height: 30px;
-  padding: 0 10px;
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 800;
-}
-
-.home-trust-strip span {
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.92);
-}
-
-.home-stat-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 18px;
-}
-
-.home-stat-card {
-  min-height: 82px;
-  padding: 13px;
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  backdrop-filter: blur(12px);
-}
-
-.home-stat-card strong {
-  display: block;
-  font-size: 22px;
-  font-weight: 900;
-}
-
-.home-stat-card span {
-  display: block;
-  margin-top: 6px;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.home-spotlight-card {
-  align-self: stretch;
-  display: grid;
-  gap: 10px;
-  padding: 16px;
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  backdrop-filter: blur(16px);
-}
-
-.home-spotlight-card h2 {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 900;
-  line-height: 1.45;
-}
-
-.home-spotlight-card p {
-  margin: 0;
-  color: rgba(255, 255, 255, 0.82);
-  line-height: 1.7;
-  font-size: 12px;
-}
-
-.home-spotlight-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.home-spotlight-grid div {
-  padding: 10px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.home-spotlight-grid span {
-  display: block;
-  font-size: 10px;
-  color: rgba(255, 255, 255, 0.7);
-}
-
-.home-spotlight-grid strong {
-  display: block;
-  margin-top: 5px;
-  font-size: 12px;
-  line-height: 1.55;
-}
-
-.home-curated-section {
-  padding: 12px 0 18px;
-}
-
-.home-curated-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.home-curated-card {
-  padding: 18px;
-  border-radius: 22px;
-  border: 1px solid var(--web-border);
-  background: linear-gradient(180deg, var(--web-surface) 0%, var(--web-surface-soft) 100%);
-  box-shadow: var(--web-shadow);
-}
-
-.home-curated-card h2 {
-  margin: 0;
-  font-size: 17px;
-  font-weight: 900;
-}
-
-.home-curated-card p {
-  margin: 10px 0 0;
-  color: var(--web-muted);
-  line-height: 1.75;
-  font-size: 12px;
-}
-
-.home-discovery-section {
-  position: relative;
-  padding: 8px 0 28px;
-}
-
-.home-filter-overlay {
-  position: fixed;
-  inset: 0;
-  border: none;
-  background: rgba(15, 23, 42, 0.38);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.18s ease;
-  z-index: 70;
-}
-
-.home-filter-overlay.open {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.home-discovery-layout {
-  display: grid;
-  grid-template-columns: 330px minmax(0, 1fr);
-  gap: 18px;
-  align-items: start;
-}
-
-.home-filter-column {
-  position: sticky;
-  top: 98px;
-  z-index: 32;
-}
-
-.home-results-column {
-  display: grid;
-  gap: 14px;
-}
-
-.home-results-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.home-results-head h2,
-.home-footer-about h2 {
-  margin: 10px 0 0;
-  font-size: 25px;
-  font-weight: 900;
-  line-height: 1.35;
-}
-
-.home-results-head p,
-.home-footer-about p {
-  margin: 6px 0 0;
-  color: var(--web-muted);
-  line-height: 1.75;
-  font-size: 13px;
-}
-
-.home-active-filter-chip {
-  background: rgba(193, 18, 18, 0.08);
-  color: var(--web-primary);
-}
-
-.home-open-filters,
-.home-toolbar-link {
-  border: 1px solid var(--web-border-strong);
-  background: var(--web-surface-soft);
-  color: var(--web-primary);
-}
-
-.home-results-toolbar {
-  justify-content: space-between;
-  padding: 14px 16px;
-  border-radius: 20px;
-  border: 1px solid var(--web-border);
-  background: linear-gradient(180deg, var(--web-surface) 0%, var(--web-surface-soft) 100%);
-}
-
-.home-results-toolbar strong {
-  display: block;
-  font-size: 14px;
-  font-weight: 900;
-}
-
-.home-results-toolbar span {
-  display: block;
-  margin-top: 4px;
-  color: var(--web-muted);
-  font-size: 12px;
-}
-
-.home-loan-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.home-empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 220px;
-  padding: 22px;
-  text-align: center;
-  border-radius: 22px;
-  border: 1px solid var(--web-border);
-  background: linear-gradient(180deg, var(--web-surface) 0%, var(--web-surface-soft) 100%);
-  box-shadow: var(--web-shadow);
-}
-
-.home-empty-state.error h3 {
-  color: #b42318;
-}
-
-.home-empty-state h3 {
-  margin: 12px 0 8px;
-  font-size: 18px;
-  font-weight: 900;
-}
-
-.home-empty-state p {
-  margin: 0;
-  color: var(--web-muted);
-  line-height: 1.85;
-}
-
-.home-footer-section {
-  padding: 8px 0 0;
-}
-
-.home-footer-grid {
-  display: grid;
-  grid-template-columns: 1.25fr 0.9fr 0.9fr;
-  gap: 14px;
-}
-
-.home-footer-about,
-.home-footer-links,
-.home-footer-support {
-  padding: 18px;
-  border-radius: 22px;
-  border: 1px solid var(--web-border);
-  background: linear-gradient(180deg, var(--web-surface) 0%, var(--web-surface-soft) 100%);
-  box-shadow: var(--web-shadow);
-}
-
-.home-footer-links h3,
-.home-footer-support h3 {
-  margin: 0 0 10px;
-  font-size: 16px;
-  font-weight: 900;
-}
-
-.home-footer-link-list a {
-  min-height: 34px;
-  padding: 0 11px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  background: var(--web-surface);
-  border: 1px solid var(--web-border);
-  color: var(--web-text);
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.home-enamad {
-  width: 92px;
-  margin-top: 14px;
-}
-
-.home-footer-bottom {
-  padding: 16px 4px 0;
-  color: var(--web-muted);
-  font-size: 12px;
-  text-align: center;
-}
-
-@media (max-width: 1199px) {
-  .home-hero-shell,
-  .home-discovery-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .home-filter-column {
-    position: static;
-  }
-}
-
-@media (max-width: 991px) {
-  .home-loan-grid,
-  .home-curated-grid,
-  .home-footer-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .home-stat-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .home-filter-column {
-    position: fixed;
-    inset: 0;
-    padding: 12px 12px 96px;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    -webkit-overflow-scrolling: touch;
-    transform: translateY(24px) scale(0.98);
-    opacity: 0;
-    pointer-events: none;
-    transition: transform 0.18s ease, opacity 0.18s ease;
-    z-index: 71;
-  }
-
-  .home-filter-column.open {
-    transform: translateY(0) scale(1);
-    opacity: 1;
-    pointer-events: auto;
-  }
-
-  .home-filter-column :deep(.loan-discovery-filters) {
-    min-height: calc(100dvh - 108px);
-    width: 100%;
-    box-shadow: 0 28px 80px rgba(15, 23, 42, 0.16);
-  }
-}
-
-@media (max-width: 767px) {
-  .home-hero-shell {
-    padding: 18px 16px;
-    border-radius: 22px;
-  }
-
-  .home-hero-copy h1 {
-    font-size: 23px;
-    line-height: 1.32;
-  }
-
-  .home-hero-copy p {
-    font-size: 12px;
-    line-height: 1.72;
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-
-  .home-hero-actions {
-    gap: 8px;
-  }
-
-  .home-primary-link,
-  .home-secondary-link {
-    flex: 1 1 calc(50% - 8px);
-  }
-
-  .home-trust-strip {
-    display: none;
-  }
-
-  .home-spotlight-card p {
-    display: none;
-  }
-
-  .home-spotlight-grid div:nth-child(n + 3) {
-    display: none;
-  }
-
-  .home-results-head,
-  .home-results-toolbar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .home-results-head h2,
-  .home-footer-about h2 {
-    font-size: 20px;
-  }
-
-  .home-loan-grid {
-    gap: 10px;
-  }
-}
-</style>
+<style scoped src="./styles/HomeView.css"></style>

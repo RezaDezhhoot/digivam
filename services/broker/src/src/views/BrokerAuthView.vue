@@ -1,7 +1,8 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { requestOtp, verifyOtp } from '../services/broker-auth.api.js';
+import OtpCodeInput from '../components/OtpCodeInput.vue';
+import { persistBrokerSession, requestOtp, verifyOtp } from '../services/broker-auth.api.js';
 import { useTheme } from '../composables/useTheme.js';
 import { useAppToast } from '../composables/useToast.js';
 
@@ -57,10 +58,15 @@ const submitPhone = async () => {
 };
 
 const submitPassword = async () => {
+  if (password.value.length !== 4) {
+    toast.error('کد تایید باید ۴ رقم باشد');
+    return;
+  }
+
   busy.value = true;
   try {
     const payload = await verifyOtp(normalizePhone(phone.value), password.value);
-    localStorage.setItem('broker_token', payload.token);
+    persistBrokerSession(payload);
     toast.success(payload.message || 'ورود موفقیت آمیز');
     setTimeout(() => router.push('/dashboard'), 400);
   } catch (error) {
@@ -128,7 +134,7 @@ const currentStep = computed(() => (step.value === 'phone' ? 1 : 2));
                   <label class="form-label form-label-required"><i class="fa-solid fa-mobile-screen me-1"></i> شماره همراه</label>
                   <input v-model="phone" class="form-control text-muted form-control-lg wizard-input mb-3" dir="ltr" disabled />
                   <label class="form-label form-label-required"><i class="fa-solid fa-key me-1"></i> کد تایید 4 رقمی</label>
-                  <input v-model="password" class="form-control form-control-lg wizard-input" dir="ltr" inputmode="numeric" maxlength="4" placeholder="1234" :disabled="busy" />
+                  <OtpCodeInput v-model="password" :disabled="busy" :auto-focus="step === 'password'" />
                 </div>
 
                 <button class="btn btn-wizard w-100 btn-lg" type="submit" :disabled="busy">
@@ -152,89 +158,4 @@ const currentStep = computed(() => (step.value === 'phone' ? 1 : 2));
   </section>
 </template>
 
-<style scoped>
-.auth-wizard-page { min-height: 100vh; background: var(--page-bg);display: flex; align-items: center; }
-
-.auth-grid {
-  display: grid;
-  grid-template-columns: 1.05fr 0.95fr;
-  border-radius: 18px;
-  overflow: hidden;
-  border: 1px solid var(--panel-border);
-  background: var(--surface-color);
-  box-shadow: var(--panel-shadow);
-}
-
-.auth-aside {
-  background: linear-gradient(180deg, var(--brand-primary) 0%, var(--brand-secondary) 100%);
-  color: #fff;
-  padding: 28px;
-  display: flex;
-  flex-direction: column;
-}
-.auth-aside-copy { margin-top: auto; }
-
-.auth-feature-list { padding: 0; margin: 0; list-style: none; display: grid; gap: 12px; }
-.auth-feature-list li {
-  padding: 14px 16px; border-radius: 12px;
-  background: rgba(255,255,255,0.08);
-  display: flex; align-items: center; gap: 10px;
-}
-.feature-icon { font-size: 16px; opacity: 0.8; }
-
-.auth-theme-btn {
-  align-self: flex-start;
-  color: #fff;
-  border: 1px solid rgba(255,255,255,0.2);
-  background: rgba(255,255,255,0.08);
-  display: flex; align-items: center; gap: 6px;
-}
-.auth-theme-btn:hover { color: #fff; background: rgba(255,255,255,0.16); }
-
-.wizard-card { background: var(--surface-color); overflow: hidden; }
-
-.wizard-head {
-  padding: 28px 28px 18px;
-  background: var(--surface-soft);
-  border-bottom: 1px solid var(--panel-border);
-}
-.wizard-head-icon {
-  width: 44px; height: 44px; border-radius: 12px;
-  background: var(--chip-bg); color: var(--brand-primary);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 18px; margin-bottom: 14px;
-}
-
-.wizard-kicker { font-size: 12px; letter-spacing: 0.12em; color: var(--brand-primary); font-weight: 700; }
-.wizard-body { padding: 24px 28px 28px; }
-
-.wizard-steps { display: flex; align-items: center; gap: 10px; }
-.wizard-step { display: flex; align-items: center; gap: 8px; color: var(--muted-text); font-size: 14px; }
-.wizard-step.active { color: var(--brand-primary); font-weight: 600; }
-
-.wizard-badge {
-  width: 32px; height: 32px; border-radius: 999px;
-  border: 1px solid var(--panel-border-strong);
-  display: inline-flex; align-items: center; justify-content: center;
-  background: var(--surface-color); font-size: 13px;
-}
-.wizard-step.active .wizard-badge { background: var(--brand-primary); color: #fff; border-color: var(--brand-primary); }
-
-.wizard-line { flex: 1; height: 2px; background: var(--panel-border); }
-.wizard-line.active { background: var(--brand-primary); }
-
-.wizard-input { border-color: var(--panel-border-strong); border-radius: 12px; }
-.wizard-input:focus { border-color: var(--brand-primary); box-shadow: 0 0 0 0.2rem rgba(219,0,0,0.12); }
-
-.btn-wizard {
-  background: var(--brand-primary); border-color: var(--brand-primary);
-  color: #fff; border-radius: 12px;
-}
-.btn-wizard:hover, .btn-wizard:focus { background: var(--brand-secondary); border-color: var(--brand-secondary); color: #fff; }
-
-.wizard-link { color: var(--brand-primary); text-decoration: none; }
-.wizard-link:hover { color: var(--brand-secondary); }
-
-@media (max-width: 991px) { .auth-grid { grid-template-columns: 1fr; } .auth-aside { min-height: 280px; } }
-@media (max-width: 575px) { .wizard-head, .wizard-body { padding-left: 18px; padding-right: 18px; } .wizard-step span:last-child { font-size: 12px; } }
-</style>
+<style scoped src="./styles/BrokerAuthView.css"></style>

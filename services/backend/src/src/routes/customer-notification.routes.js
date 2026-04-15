@@ -11,7 +11,7 @@ import { customerNotificationIdValidator } from '../validators/customer-notifica
 
 export const customerNotificationRouter = Router();
 
-customerNotificationRouter.use(requireAuth('customer'));
+customerNotificationRouter.use(requireAuth('customer', { allowSuspended: true }));
 
 customerNotificationRouter.get('/summary', getCustomerNotificationSummary);
 customerNotificationRouter.get('/', listCustomerNotifications);

@@ -1,47 +1,14 @@
-import { API_BASE, emitMaintenanceEvent, emitServiceUnavailableEvent } from './broker-auth.api.js';
-
-const headers = () => {
-  const token = localStorage.getItem('broker_token');
-  return {
-    Authorization: token ? `Bearer ${token}` : ''
-  };
-};
-
-const fetchJson = async (url, options = {}) => {
-  let response;
-  try {
-    response = await fetch(url, options);
-  } catch (error) {
-    emitServiceUnavailableEvent({ panel: 'broker' });
-    throw error;
-  }
-
-  const data = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    const error = new Error(data.message || 'درخواست با خطا مواجه شد');
-    error.status = response.status;
-    error.data = data;
-    if (response.status === 503) {
-      emitMaintenanceEvent({ panel: data.panel, message: error.message });
-    } else if (response.status >= 500) {
-      emitServiceUnavailableEvent({ panel: data.panel || 'broker', message: error.message });
-    }
-    throw error;
-  }
-
-  return data;
-};
+import { API_BASE, brokerAuthHeaders, brokerFetchJson } from './broker-auth.api.js';
 
 const uploadWithProgress = (url, formData, onProgress) =>
   new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('PUT', url, true);
 
-    const auth = headers().Authorization;
-    if (auth) {
-      xhr.setRequestHeader('Authorization', auth);
-    }
+    // const auth = headers().Authorization;
+    // if (auth) {
+    // }
+    xhr.setRequestHeader('Authorization', brokerAuthHeaders().Authorization);
 
     xhr.upload.onprogress = (event) => {
       if (!event.lengthComputable || typeof onProgress !== 'function') {
@@ -66,14 +33,14 @@ const uploadWithProgress = (url, formData, onProgress) =>
   });
 
 export const getBrokerProfile = () =>
-  fetchJson(`${API_BASE}/broker/profile`, {
-    headers: headers()
+  brokerFetchJson(`${API_BASE}/broker/profile`, {
+    headers: brokerAuthHeaders()
   });
 
 export const updateBrokerLevel1 = (payload) =>
-  fetchJson(`${API_BASE}/broker/profile/level-1`, {
+  brokerFetchJson(`${API_BASE}/broker/profile/level-1`, {
     method: 'PUT',
-    headers: { ...headers(), 'Content-Type': 'application/json' },
+    headers: { ...brokerAuthHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   });
 

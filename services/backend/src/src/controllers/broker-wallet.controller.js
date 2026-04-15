@@ -2,8 +2,11 @@ import { Broker } from '../models/broker.model.js';
 import { Invoice } from '../models/invoice.model.js';
 import { Transaction } from '../models/transaction.model.js';
 import { Wallet } from '../models/wallet.model.js';
+import { BrokerWithdrawal } from '../models/broker-withdrawal.model.js';
+import { File } from '../models/file.model.js';
+import { sequelize } from '../config/database.js';
 import { env } from '../config/env.js';
-import { creditWallet, ensureWallet, normalizeMoneyAmount, serializeWallet } from '../services/wallet.service.js';
+import { creditWallet, debitWallet, ensureWallet, normalizeMoneyAmount, serializeWallet } from '../services/wallet.service.js';
 import { Zarin } from '../services/payment/drivers/zarin.js';
 import { Payment } from '../services/payment/payment.js';
 import { PaymentStatus, paymentStatusLabel } from '../services/payment/enums/payment-status.js';
@@ -13,10 +16,22 @@ import { BROKER_WALLET_CHARGE_AMOUNTS } from '../validators/broker-wallet.valida
 const INVOICE_PAYABLE_TYPE = 'wallet';
 const TRANSACTION_PAYABLE_TYPE = 'invoice';
 
+const PAYABLE_TYPE_LABELS = {
+  invoice: 'شارژ کیف پول',
+  deal_settlement: 'تسویه حساب معامله',
+  broker_confirmation: 'پیش‌پرداخت معامله',
+  broker_withdrawal: 'درخواست برداشت',
+  withdrawal_refund: 'استرداد برداشت',
+  admin_deposit: 'واریز توسط ادمین',
+  admin_withdraw: 'برداشت توسط ادمین'
+};
+
 const serializeTransaction = (item) => ({
   id: item.id,
   type: item.type,
   typeLabel: item.type === Transaction.TYPES.DEPOSIT ? 'واریز' : 'برداشت',
+  payableType: item.payableType || null,
+  subjectLabel: PAYABLE_TYPE_LABELS[item.payableType] || null,
   amount: String(item.amount || 0),
   confirmed: Boolean(item.confirmed),
   createdAt: item.createdAt,
@@ -244,6 +259,100 @@ export const verifyBrokerWalletCharge = async (req, res, next) => {
       wallet: serializeWallet(wallet),
       walletBalance: String(wallet.balance || 0),
       invoice: serializeInvoice(invoice)
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+const serializeWithdrawal = (item) => {
+  const raw = typeof item?.toJSON === 'function' ? item.toJSON() : item;
+  return {
+    id: raw.id,
+    amount: String(raw.amount || 0),
+    status: raw.status,
+    statusLabel: BrokerWithdrawal.STATUS_LABELS[raw.status] || raw.status,
+    adminMessage: raw.adminMessage || null,
+    adminFileUrl: raw.adminFile?.path
+      ? `${String(env.backendBaseUrl || '').replace(/\/+$/, '')}/uploads/${raw.adminFile.path}`
+      : null,
+    resolvedAt: raw.resolvedAt || null,
+    createdAt: raw.createdAt,
+    updatedAt: raw.updatedAt
+  };
+};
+
+export const createBrokerWithdrawal = async (req, res, next) => {
+  try {
+    await getBrokerOrFail(req.auth.sub);
+    const wallet = await getWalletForBroker(req.auth.sub);
+    const amount = normalizeMoneyAmount(req.body.amount);
+
+    if (amount <= 0) {
+      return res.status(422).json({ message: 'مبلغ برداشت باید بیشتر از صفر باشد' });
+    }
+
+    if (Number(wallet.balance) < amount) {
+      return res.status(422).json({ message: 'موجودی کیف پول کافی نیست' });
+    }
+
+    const withdrawal = await sequelize.transaction(async (transaction) => {
+      const result = await debitWallet({
+        walletId: wallet.id,
+        amount,
+        payableType: 'broker_withdrawal',
+        payableId: 0,
+        meta: { description: 'درخواست برداشت کارگزار' },
+        transaction
+      });
+
+      const record = await BrokerWithdrawal.create({
+        brokerId: Number(req.auth.sub),
+        walletId: wallet.id,
+        transactionId: result.transaction.id,
+        amount,
+        status: BrokerWithdrawal.STATUSES.PENDING
+      }, { transaction });
+
+      await Transaction.update(
+        { payableId: record.id },
+        { where: { id: result.transaction.id }, transaction }
+      );
+
+      return record;
+    });
+
+    await wallet.reload();
+
+    return res.status(201).json({
+      message: 'درخواست برداشت ثبت شد',
+      withdrawal: serializeWithdrawal(withdrawal),
+      wallet: serializeWallet(wallet),
+      walletBalance: String(wallet.balance || 0)
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const listBrokerWithdrawals = async (req, res, next) => {
+  try {
+    await getBrokerOrFail(req.auth.sub);
+
+    const withdrawals = await BrokerWithdrawal.findAll({
+      where: { brokerId: Number(req.auth.sub) },
+      include: [{
+        model: File,
+        as: 'adminFile',
+        required: false,
+        attributes: ['id', 'path']
+      }],
+      order: [['id', 'DESC']],
+      limit: 100
+    });
+
+    return res.status(200).json({
+      items: withdrawals.map(serializeWithdrawal)
     });
   } catch (error) {
     return next(error);

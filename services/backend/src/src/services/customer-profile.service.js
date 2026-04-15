@@ -38,6 +38,8 @@ export const serializeCustomerProfile = (customer) => ({
   birthdate: customer.birthdate,
   verifiedAt: customer.verifiedAt,
   profile: Boolean(customer.profile),
+  isSuspended: Boolean(customer.isSuspended),
+  suspendReason: customer.suspendReason || '',
   avatar: fileUrl(customer.avatar),
   wallet: serializeWallet(customer.wallet),
   walletBalance: String(customer.wallet?.balance || 0)

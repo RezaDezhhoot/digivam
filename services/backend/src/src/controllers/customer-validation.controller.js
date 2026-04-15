@@ -47,6 +47,11 @@ const fileUrl = (file) => {
   return `${env.backendBaseUrl}/uploads/${relativePath}`;
 };
 
+const fileDownloadUrl = (fileId) => {
+  const numericId = Number(fileId || 0);
+  return numericId > 0 ? `${env.backendBaseUrl}/api/files/${numericId}/download` : null;
+};
+
 const parseRequestData = (value) => {
   if (!value) {
     return {};
@@ -238,7 +243,8 @@ const extractUploadedFiles = (data) => {
             key: `field_${item.documentId}`,
             fileId: item.value.fileId,
             fileName: item.value.fileName || item.title || `field_${item.documentId}`,
-            url: item.value.url || null
+            url: item.value.url || null,
+            downloadUrl: item.value.downloadUrl || fileDownloadUrl(item.value.fileId)
           });
         }
       }
@@ -280,7 +286,8 @@ const enrichCustomerData = async (data) => {
               value: {
                 fileId: file.id,
                 fileName: file.data?.originalName || file.subject || `file-${file.id}`,
-                url: fileUrl(file)
+                url: fileUrl(file),
+                downloadUrl: fileDownloadUrl(file.id)
               }
             };
           }
@@ -296,11 +303,13 @@ const serializeForCustomer = async (item) => {
   const enrichedData = await enrichCustomerData(raw.data);
   let adminAttachmentUrl = null;
   let adminAttachmentFileName = null;
+  let adminAttachmentDownloadUrl = null;
 
   if (raw.adminAttachmentId) {
     const adminAttachmentFile = await File.findByPk(raw.adminAttachmentId);
     if (adminAttachmentFile) {
       adminAttachmentUrl = fileUrl(adminAttachmentFile);
+      adminAttachmentDownloadUrl = fileDownloadUrl(adminAttachmentFile.id);
       adminAttachmentFileName = adminAttachmentFile.data?.originalName || `file-${adminAttachmentFile.id}`;
     }
   }
@@ -343,6 +352,7 @@ const serializeForCustomer = async (item) => {
     selfValidationLabel: Boolean(raw.selfValidation) ? 'توسط مشتری' : 'توسط دیجی وام',
     adminAttachmentId: raw.adminAttachmentId || null,
     adminAttachmentUrl,
+    adminAttachmentDownloadUrl,
     adminAttachmentFileName,
     canResubmit: [CustomerValidation.STATUSES.REJECTED, CustomerValidation.STATUSES.EXPIRED].includes(raw.status),
     uploadedFiles: extractUploadedFiles(enrichedData)

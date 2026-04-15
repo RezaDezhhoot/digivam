@@ -2,15 +2,20 @@ import { sequelize } from '../config/database.js';
 import { Notification } from '../models/notification.model.js';
 import { Facility } from '../models/facility.model.js';
 import { Deal } from '../models/deal.model.js';
-import { createNotification } from '../services/notification.service.js';
+import { BrokerRate } from '../models/broker-rate.model.js';
+import { Broker } from '../models/broker.model.js';
+import { buildDealNotificationMetadata, createNotification } from '../services/notification.service.js';
 import {
+  confirmDealTransferByCustomer,
   createDealForCustomer,
   createDealSummary,
   findDealById,
   listDeals,
   loadDealById,
   loadFacilityForDeal,
+  requestDealAdminReviewByCustomer,
   requestDealContractOtp,
+  requestDealTransferOtp,
   saveDealDocuments,
   signDealContract,
   serializeDeal
@@ -22,7 +27,7 @@ const sanitizeCustomerDeal = (item) => {
     return item;
   }
 
-  const { broker, brokerId, facilityData, ...rest } = item;
+  const { broker, brokerId, brokerConfirmationAmount, facilityData, ...rest } = item;
   const nextFacilityData = facilityData && typeof facilityData === 'object' && !Array.isArray(facilityData)
     ? { ...facilityData }
     : facilityData;
@@ -124,7 +129,11 @@ export const createCustomerDealRequest = async (req, res, next) => {
         modelType: Notification.MODEL_TYPES.BROKER,
         modelId: serializedItem.brokerId,
         senderType: Notification.MODEL_TYPES.CUSTOMER,
-        senderId: serializedItem.customerId
+        senderId: serializedItem.customerId,
+        metadata: buildDealNotificationMetadata({
+          dealId: serializedItem.id,
+          recipientType: Notification.MODEL_TYPES.BROKER
+        })
       }).catch(() => null);
     }
 
@@ -174,7 +183,11 @@ export const upsertCustomerDealDocuments = async (req, res, next) => {
         modelType: Notification.MODEL_TYPES.BROKER,
         modelId: serializedItem.brokerId,
         senderType: Notification.MODEL_TYPES.CUSTOMER,
-        senderId: serializedItem.customerId
+        senderId: serializedItem.customerId,
+        metadata: buildDealNotificationMetadata({
+          dealId: serializedItem.id,
+          recipientType: Notification.MODEL_TYPES.BROKER
+        })
       }).catch(() => null);
     }
 
@@ -235,24 +248,215 @@ export const signCustomerDealContract = async (req, res, next) => {
     const item = sanitizeCustomerDeal(serializedItem);
 
     const bothSigned = item.contractSignedByCustomer && item.contractSignedByBroker;
+    const notificationBody = bothSigned
+      ? item.step === Deal.STEPS.TRANSFER
+        ? `قرارداد معامله «${item.facility?.title || 'وام'}» توسط هر دو طرف امضا شد و پرونده وارد مرحله انتقال امتیاز شد.`
+        : `قرارداد معامله «${item.facility?.title || 'وام'}» توسط هر دو طرف امضا شد و پرونده وارد مرحله پرداخت شد.`
+      : `مشتری قرارداد معامله «${item.facility?.title || 'وام'}» را امضا کرد. در انتظار امضای شما.`;
     await createNotification({
       category: bothSigned ? Notification.CATEGORIES.ATTENTION : Notification.CATEGORIES.INFO,
       title: bothSigned ? 'قرارداد معامله امضا شد' : 'امضای قرارداد توسط مشتری',
-      body: bothSigned
-        ? `قرارداد معامله «${item.facility?.title || 'وام'}» توسط هر دو طرف امضا شد و پرونده وارد مرحله پرداخت شد.`
-        : `مشتری قرارداد معامله «${item.facility?.title || 'وام'}» را امضا کرد. در انتظار امضای شما.`,
+      body: notificationBody,
       modelType: Notification.MODEL_TYPES.BROKER,
       modelId: serializedItem.brokerId,
       senderType: Notification.MODEL_TYPES.CUSTOMER,
-      senderId: serializedItem.customerId
+      senderId: serializedItem.customerId,
+      metadata: buildDealNotificationMetadata({
+        dealId: serializedItem.id,
+        recipientType: Notification.MODEL_TYPES.BROKER
+      })
     }).catch(() => null);
 
     return res.status(200).json({
       message: item.contractSignedByCustomer && item.contractSignedByBroker
-        ? 'امضای قرارداد ثبت شد و معامله وارد مرحله پرداخت شد'
+        ? item.step === Deal.STEPS.TRANSFER
+          ? 'امضای قرارداد ثبت شد و معامله وارد مرحله انتقال شد'
+          : 'امضای قرارداد ثبت شد و معامله وارد مرحله پرداخت شد'
         : 'امضای مشتری ثبت شد و وضعیت قرارداد به‌روزرسانی شد',
       item
     });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const requestCustomerDealTransferOtp = async (req, res, next) => {
+  try {
+    const deal = await loadDealById(req.params.id, { customerId: Number(req.auth.sub) });
+
+    if (!deal) {
+      return res.status(404).json({ message: 'معامله یافت نشد' });
+    }
+
+    const payload = await requestDealTransferOtp({
+      deal,
+      actorPhone: deal.customer?.phone,
+      actorName: deal.customer?.name
+    });
+
+    return res.status(200).json(payload);
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const confirmCustomerDealTransfer = async (req, res, next) => {
+  try {
+    const deal = await loadDealById(req.params.id, { customerId: Number(req.auth.sub) });
+
+    if (!deal) {
+      return res.status(404).json({ message: 'معامله یافت نشد' });
+    }
+
+    const updated = await sequelize.transaction(async (transaction) => {
+      await confirmDealTransferByCustomer({
+        deal,
+        customerId: Number(req.auth.sub),
+        actorName: deal.customer?.name || req.auth.name || 'مشتری',
+        actorPhone: deal.customer?.phone,
+        code: req.body.code,
+        transaction
+      });
+
+      return loadDealById(deal.id, { customerId: Number(req.auth.sub) });
+    });
+
+    const serializedItem = await serializeDeal(updated);
+    const item = sanitizeCustomerDeal(serializedItem);
+
+    await createNotification({
+      category: Notification.CATEGORIES.ATTENTION,
+      title: 'انتقال امتیاز تایید شد',
+      body: `مشتری انتقال امتیاز معامله «${serializedItem.facility?.title || serializedItem.facilityData?.title || 'وام'}» را تایید کرد و پرونده نهایی شد.`,
+      modelType: Notification.MODEL_TYPES.BROKER,
+      modelId: serializedItem.brokerId,
+      senderType: Notification.MODEL_TYPES.CUSTOMER,
+      senderId: serializedItem.customerId,
+      metadata: buildDealNotificationMetadata({
+        dealId: serializedItem.id,
+        recipientType: Notification.MODEL_TYPES.BROKER
+      })
+    }).catch(() => null);
+
+    return res.status(200).json({
+      message: 'انتقال امتیاز تایید شد و معامله با موفقیت نهایی شد',
+      item
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const requestCustomerDealAdminReview = async (req, res, next) => {
+  try {
+    const deal = await loadDealById(req.params.id, { customerId: Number(req.auth.sub) });
+
+    if (!deal) {
+      return res.status(404).json({ message: 'معامله یافت نشد' });
+    }
+
+    const updated = await sequelize.transaction(async (transaction) => {
+      await requestDealAdminReviewByCustomer({
+        deal,
+        customerId: Number(req.auth.sub),
+        actorName: deal.customer?.name || req.auth.name || 'مشتری',
+        reason: req.body.reason,
+        transaction
+      });
+
+      return loadDealById(deal.id, { customerId: Number(req.auth.sub) });
+    });
+
+    const serializedItem = await serializeDeal(updated);
+    const item = sanitizeCustomerDeal(serializedItem);
+    const title = 'پرونده وارد بررسی مدیریت شد';
+    const body = `درخواست بررسی مدیریت برای معامله «${serializedItem.facility?.title || serializedItem.facilityData?.title || 'وام'}» ثبت شد و تا پایان بررسی، پرونده قفل است.`;
+
+    await Promise.all([
+      createNotification({
+        category: Notification.CATEGORIES.ATTENTION,
+        title,
+        body,
+        modelType: Notification.MODEL_TYPES.CUSTOMER,
+        modelId: serializedItem.customerId,
+        senderType: Notification.MODEL_TYPES.CUSTOMER,
+        senderId: serializedItem.customerId,
+        metadata: buildDealNotificationMetadata({
+          dealId: serializedItem.id,
+          recipientType: Notification.MODEL_TYPES.CUSTOMER
+        })
+      }).catch(() => null),
+      createNotification({
+        category: Notification.CATEGORIES.ATTENTION,
+        title,
+        body,
+        modelType: Notification.MODEL_TYPES.BROKER,
+        modelId: serializedItem.brokerId,
+        senderType: Notification.MODEL_TYPES.CUSTOMER,
+        senderId: serializedItem.customerId,
+        metadata: buildDealNotificationMetadata({
+          dealId: serializedItem.id,
+          recipientType: Notification.MODEL_TYPES.BROKER
+        })
+      }).catch(() => null)
+    ]);
+
+    return res.status(200).json({
+      message: 'درخواست بررسی مدیریت ثبت شد',
+      item
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const rateBrokerForDeal = async (req, res, next) => {
+  try {
+    const deal = await loadDealById(req.params.id, { customerId: Number(req.auth.sub) });
+
+    if (!deal) {
+      return res.status(404).json({ message: 'معامله یافت نشد' });
+    }
+
+    if (deal.status !== Deal.STATUSES.DONE || deal.step !== Deal.STEPS.FINISHED) {
+      return res.status(422).json({ message: 'امتیازدهی فقط پس از اتمام معامله امکان‌پذیر است' });
+    }
+
+    if (!deal.brokerId) {
+      return res.status(422).json({ message: 'کارگزاری برای این معامله ثبت نشده است' });
+    }
+
+    const existing = await BrokerRate.findOne({ where: { dealId: deal.id } });
+    if (existing) {
+      return res.status(422).json({ message: 'شما قبلاً برای این معامله امتیاز ثبت کرده‌اید' });
+    }
+
+    const score = Number(req.body.score);
+    const comment = (req.body.comment || '').trim().slice(0, 1000) || null;
+
+    await sequelize.transaction(async (transaction) => {
+      await BrokerRate.create({
+        dealId: deal.id,
+        brokerId: deal.brokerId,
+        customerId: Number(req.auth.sub),
+        score,
+        comment
+      }, { transaction });
+
+      const avg = await BrokerRate.findOne({
+        where: { brokerId: deal.brokerId },
+        attributes: [[sequelize.fn('AVG', sequelize.col('score')), 'avgScore']],
+        raw: true,
+        transaction
+      });
+
+      await Broker.update(
+        { rate: Number(Number(avg?.avgScore || score).toFixed(2)) },
+        { where: { id: deal.brokerId }, transaction }
+      );
+    });
+
+    return res.status(200).json({ message: 'امتیاز شما با موفقیت ثبت شد' });
   } catch (error) {
     return next(error);
   }

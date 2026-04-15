@@ -24,7 +24,11 @@ export const SETTING_KEYS = {
   MARKET_META_KEYWORDS: 'market_meta_keywords',
   HOME_FEATURE_CARDS: 'home_feature_cards',
   FOOTER_CONTENT: 'footer_content',
-  FEATURED_FACILITY_ID: 'featured_facility_id'
+  FEATURED_FACILITY_ID: 'featured_facility_id',
+  ABOUT_US_CONTENT: 'about_us_content',
+  WELCOME_MESSAGE_CUSTOMER: 'welcome_message_customer',
+  WELCOME_MESSAGE_BROKER: 'welcome_message_broker',
+  LICENSES_CONTENT: 'licenses_content'
 };
 
 const uploadsRoot = path.resolve(process.cwd(), 'src', 'uploads').replace(/\\/g, '/');
@@ -118,6 +122,26 @@ const normalizeFooterContent = (value) => {
   };
 };
 
+const normalizeLicensesContent = (value) => {
+  const parsed = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const items = Array.isArray(parsed.items)
+    ? parsed.items
+        .map((item) => ({
+          title: normalizeString(item?.title),
+          description: normalizeString(item?.description),
+          imageUrl: fileUrl(item?.imageUrl) || '',
+          verifyUrl: normalizeString(item?.verifyUrl)
+        }))
+        .filter((item) => item.title || item.imageUrl || item.verifyUrl)
+    : [];
+
+  return {
+    heroTitle: normalizeString(parsed.heroTitle),
+    heroDescription: normalizeString(parsed.heroDescription),
+    items
+  };
+};
+
 const normalizeBooleanSetting = (value) => ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase());
 
 const fileUrl = (value) => {
@@ -151,6 +175,7 @@ export const serializeAdminSettings = (items) => {
   const footerContent = normalizeFooterContent(parseJson(map.get(SETTING_KEYS.FOOTER_CONTENT), DEFAULT_FOOTER_CONTENT));
   const featuredFacilityId = Number(map.get(SETTING_KEYS.FEATURED_FACILITY_ID) || 0) || '';
   const maintenanceMessage = normalizeString(map.get(SETTING_KEYS.MAINTENANCE_MESSAGE)) || DEFAULT_MAINTENANCE_MESSAGE;
+  const licensesContent = normalizeLicensesContent(parseJson(map.get(SETTING_KEYS.LICENSES_CONTENT) || '{}', {}));
 
   return {
     siteName: map.get(SETTING_KEYS.SITE_NAME) || '',
@@ -175,7 +200,11 @@ export const serializeAdminSettings = (items) => {
     marketMetaKeywords: map.get(SETTING_KEYS.MARKET_META_KEYWORDS) || '',
     homeFeatureCards,
     footerContent,
-    featuredFacilityId
+    featuredFacilityId,
+    aboutUsContent: parseJson(map.get(SETTING_KEYS.ABOUT_US_CONTENT) || '{}', {}),
+    welcomeMessageCustomer: map.get(SETTING_KEYS.WELCOME_MESSAGE_CUSTOMER) || '',
+    welcomeMessageBroker: map.get(SETTING_KEYS.WELCOME_MESSAGE_BROKER) || '',
+    licensesContent
   };
 };
 
@@ -227,7 +256,8 @@ export const serializePublicSiteSettings = (items) => {
         keywords: settings.marketMetaKeywords
       },
       defaultSeo
-    )
+    ),
+    licensesContent: settings.licensesContent || {}
   };
 };
 
@@ -244,6 +274,11 @@ export const loadMaintenanceSettings = async () => {
     customer: Boolean(settings.customerPanelMaintenance),
     broker: Boolean(settings.brokerPanelMaintenance)
   };
+};
+
+export const loadDecreaseValidityAmount = async () => {
+  const settings = serializeAdminSettings(await loadSettingsItems());
+  return Number(settings.decreaseValidity || 0);
 };
 
 export const upsertSetting = async (name, value) => {

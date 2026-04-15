@@ -20,6 +20,13 @@ const successText = ref('');
 
 const hasSession = computed(() => isAuthenticated.value);
 const session = computed(() => profile.value);
+const suspendedNotice = computed(() => {
+  if (!session.value?.isSuspended) {
+    return '';
+  }
+
+  return session.value?.suspendReason || 'حساب شما توسط ادمین معلق شده است و فقط بخش پشتیبانی در دسترس است.';
+});
 
 const formatDate = (value) => (value ? new Date(value).toLocaleString('fa-IR') : '-');
 
@@ -162,6 +169,16 @@ watch(
       </div>
     </section>
 
+    <section v-if="suspendedNotice" class="card card-body mb-3 border-warning-subtle bg-warning-subtle request-suspension-card">
+      <div class="d-flex align-items-start gap-3">
+        <i class="fa-solid fa-ban fs-4 text-warning"></i>
+        <div>
+          <h2 class="h6 mb-1">علت تعلیق حساب</h2>
+          <p class="mb-0">{{ suspendedNotice }}</p>
+        </div>
+      </div>
+    </section>
+
     <p v-if="errorText" class="small text-danger">{{ errorText }}</p>
     <p v-if="successText" class="small text-success">{{ successText }}</p>
 
@@ -276,189 +293,4 @@ watch(
   </div>
 </template>
 
-<style scoped>
-.request-view {
-  display: grid;
-  gap: 14px;
-}
-
-.request-hero {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-  border-radius: 30px;
-  background: linear-gradient(135deg, rgba(155, 0, 0, 0.08) 0%, rgba(255, 255, 255, 0.92) 100%);
-}
-
-.request-hero h1,
-.request-hero p {
-  color: var(--web-text);
-}
-
-.request-access-card,
-.request-create-card,
-.request-list-panel,
-.request-thread-panel {
-  border-radius: 28px;
-}
-
-.request-user-chip,
-.request-status-chip {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  padding: 10px 14px;
-  background: var(--web-primary-soft);
-  color: var(--web-primary);
-  font-weight: 700;
-}
-
-.request-list-panel,
-.request-thread-panel {
-  min-height: 520px;
-}
-
-.request-list-item {
-  width: 100%;
-  text-align: right;
-  border: 1px solid #d7e7f4;
-  border-radius: 18px;
-  padding: 14px 16px;
-  margin-bottom: 12px;
-  background: linear-gradient(180deg, --web-surface 0%, var(--web-surface) 100%);
-  color: var(--web-text);
-  transition: border-color 0.2s ease, transform 0.2s ease, background 0.2s ease;
-}
-
-.request-list-item:hover {
-  transform: translateY(-1px);
-  border-color: rgba(15, 122, 163, 0.32);
-}
-
-.request-list-item.active {
-  border-color: var(--web-primary);
-  background: var(--web-primary-soft);
-}
-
-.request-thread-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: flex-start;
-  margin-bottom: 18px;
-}
-
-.request-messages {
-  display: grid;
-  gap: 12px;
-}
-
-.request-message {
-  border-radius: 18px;
-  padding: 16px;
-  max-width: 85%;
-  color: var(--web-text);
-}
-
-.message-user {
-  justify-self: flex-start;
-  background: var(--web-surface-soft);
-  border: 1px solid var(--web-border);
-}
-
-.message-admin {
-  justify-self: flex-end;
-  background: var(--web-primary-soft);
-  border: 1px solid rgba(155, 0, 0, 0.14);
-}
-
-.reply-box {
-  border-top: 1px solid #d7e7f4;
-  padding-top: 18px;
-}
-
-:global([data-theme='dark']) .request-view .request-hero {
-  background: linear-gradient(135deg, rgba(255, 106, 99, 0.16) 0%, rgba(21, 30, 42, 0.96) 100%);
-  border: 1px solid rgba(151, 176, 214, 0.2);
-}
-
-:global([data-theme='dark']) .request-view .request-access-card,
-:global([data-theme='dark']) .request-view .request-create-card,
-:global([data-theme='dark']) .request-view .request-list-panel,
-:global([data-theme='dark']) .request-view .request-thread-panel {
-  background: linear-gradient(180deg, rgba(16, 23, 32, 0.99) 0%, rgba(10, 15, 23, 0.99) 100%);
-  border-color: rgba(151, 176, 214, 0.16);
-}
-
-:global([data-theme='dark']) .request-view .request-user-chip,
-:global([data-theme='dark']) .request-view .request-status-chip {
-  background: rgba(255, 106, 99, 0.16);
-  color: #ffd2cf;
-}
-
-:global([data-theme='dark']) .request-view .request-list-item {
-  border-color: rgba(151, 176, 214, 0.14);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.025) 100%);
-  color: #f5f8ff;
-}
-
-:global([data-theme='dark']) .request-view .request-list-item.active {
-  border-color: rgba(255, 106, 99, 0.45);
-  background: linear-gradient(135deg, rgba(255, 106, 99, 0.24) 0%, rgba(255, 106, 99, 0.12) 100%);
-}
-
-:global([data-theme='dark']) .request-view .message-user {
-  border-color: rgba(151, 176, 214, 0.14);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.025) 100%);
-}
-
-:global([data-theme='dark']) .request-view .message-admin {
-  border-color: rgba(255, 106, 99, 0.28);
-  background: linear-gradient(135deg, rgba(255, 106, 99, 0.14) 0%, rgba(255, 106, 99, 0.08) 100%);
-}
-
-:global([data-theme='dark']) .request-view .reply-box {
-  border-top-color: rgba(151, 176, 214, 0.18);
-}
-
-:global([data-theme='dark']) .request-view .request-thread-header {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(151, 176, 214, 0.1);
-  border-radius: 20px;
-  padding: 14px 16px;
-}
-
-:global([data-theme='dark']) .request-view .form-control,
-:global([data-theme='dark']) .request-view .form-select {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(151, 176, 214, 0.14);
-  color: #f5f8ff;
-}
-
-:global([data-theme='dark']) .request-view .text-muted,
-:global([data-theme='dark']) .request-view small,
-:global([data-theme='dark']) .request-view p {
-  color: #becbdd !important;
-}
-
-:global([data-theme='dark']) .request-view h1,
-:global([data-theme='dark']) .request-view h2,
-:global([data-theme='dark']) .request-view h3,
-:global([data-theme='dark']) .request-view .fw-bold,
-:global([data-theme='dark']) .request-view strong,
-:global([data-theme='dark']) .request-view label {
-  color: #f5f8ff;
-}
-
-@media (max-width: 991px) {
-  .request-thread-header {
-    flex-direction: column;
-  }
-
-  .request-message {
-    max-width: 100%;
-  }
-}
-</style>
+<style scoped src="./styles/RequestsView.css"></style>

@@ -1,5 +1,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import Swal from 'sweetalert2';
+import OtpCodeInput from './OtpCodeInput.vue';
 import { requestCustomerDealContractOtp, signCustomerDealContract } from '../services/customer-panel.api.js';
 
 const props = defineProps({
@@ -19,6 +21,7 @@ const feedbackText = ref('');
 const feedbackTone = ref('info');
 const resendIn = ref(0);
 const previewOpen = ref(false);
+const contractZoom = ref(1);
 const canvasRef = ref(null);
 const canvasWrapRef = ref(null);
 const emptySignature = ref(true);
@@ -31,7 +34,7 @@ let resizeFrameId = null;
 const paymentMethods = computed(() => (Array.isArray(props.deal?.paymentTypes) ? props.deal.paymentTypes : []));
 const canSign = computed(() => Boolean(props.deal?.canCustomerSignContract));
 const contractReady = computed(() => Boolean(props.deal?.contractReady || props.deal?.contractData));
-const contractKey = computed(() => `${props.deal?.id}-${props.deal?.contractSignedByCustomer}-${props.deal?.contractSignedByBroker}`);
+const contractKey = computed(() => `${props.deal?.id}-${props.deal?.contractSignedByCustomer}-${props.deal?.contractSignedByBroker}-${props.deal?.updatedAt || ''}-${String(props.deal?.contractData || '').length}`);
 const signerStates = computed(() => [
   {
     key: 'customer',
@@ -115,7 +118,7 @@ const setupCanvas = () => {
 
   const ratio = window.devicePixelRatio || 1;
   const width = resolveCanvasWidth(wrap, 280);
-  const height = window.innerWidth < 768 ? 240 : 320;
+  const height = window.innerWidth < 768 ? 170 : 220;
 
   canvas.width = width * ratio;
   canvas.height = height * ratio;
@@ -225,6 +228,7 @@ const openPreview = () => {
     return;
   }
 
+  contractZoom.value = window.innerWidth <= 767 ? 0.5 : 1;
   previewOpen.value = true;
 };
 
@@ -359,14 +363,19 @@ const resendOtp = async () => {
 };
 
 const submitSignature = async () => {
-  if (!otpCode.value.trim()) {
-    showFeedback('کد تایید را وارد کنید.', 'error');
+  if (otpCode.value.trim().length !== 4) {
+    showFeedback('کد تایید باید ۴ رقم باشد.', 'error');
     return;
   }
 
   const signature = currentSignature();
   if (!signature) {
     showFeedback('امضای شما خالی است.', 'error');
+    return;
+  }
+
+  const { isConfirmed } = await Swal.fire({ title: 'ثبت امضا', text: 'امضای قرارداد با همین کد تایید ثبت شود؟', icon: 'question', confirmButtonText: 'بله، ثبت', cancelButtonText: 'انصراف', showCancelButton: true, reverseButtons: true });
+  if (!isConfirmed) {
     return;
   }
 
@@ -455,7 +464,7 @@ onBeforeUnmount(() => {
       <article v-for="item in paymentMethods" :key="item.id || item.paymentType" class="contract-payment-card">
         <div class="contract-payment-title-row">
           <strong>{{ item.paymentTypeLabel }}</strong>
-          <span>{{ item.amount }} تومان</span>
+          <span>{{ Number(item.amount).toLocaleString() }} تومان</span>
         </div>
         <p>{{ item.description }}</p>
       </article>
@@ -531,13 +540,18 @@ onBeforeUnmount(() => {
                 <p>نسخه کامل قرارداد را در همین صفحه مرور کنید و در صورت نیاز PDF بگیرید.</p>
               </div>
               <div class="contract-preview-modal-actions">
+                <div class="contract-zoom-controls">
+                  <button type="button" @click="contractZoom = Math.max(0.3, +(contractZoom - 0.1).toFixed(1))"><i class="fa-solid fa-minus"></i></button>
+                  <span>{{ Math.round(contractZoom * 100) }}%</span>
+                  <button type="button" @click="contractZoom = Math.min(2, +(contractZoom + 0.1).toFixed(1))"><i class="fa-solid fa-plus"></i></button>
+                </div>
                 <button type="button" class="contract-secondary-btn" :disabled="otpBusy" @click="downloadContract">دانلود PDF</button>
                 <button type="button" class="contract-otp-close" @click="previewOpen = false">×</button>
               </div>
             </div>
 
             <div class="contract-preview-shell contract-preview-shell--fullscreen">
-              <iframe v-if="contractReady" :key="'fs-' + contractKey" class="contract-preview-frame contract-preview-frame--fullscreen" :srcdoc="props.deal.contractData"></iframe>
+              <iframe v-if="contractReady" :key="'fs-' + contractKey" class="contract-preview-frame contract-preview-frame--fullscreen" :style="{ transform: `scale(${contractZoom})`, transformOrigin: 'top right' }" :srcdoc="props.deal.contractData"></iframe>
             </div>
           </div>
         </div>
@@ -558,7 +572,7 @@ onBeforeUnmount(() => {
             </div>
 
             <label class="contract-otp-label" for="customer-contract-otp">کد تایید</label>
-            <input id="customer-contract-otp" v-model="otpCode" class="contract-otp-input" dir="ltr" inputmode="numeric" maxlength="6" placeholder="1234" />
+            <OtpCodeInput v-model="otpCode" :disabled="otpBusy" :auto-focus="otpOpen" />
 
             <div class="contract-otp-actions">
               <button type="button" class="contract-secondary-btn" :disabled="otpBusy || resendIn > 0" @click="resendOtp">
@@ -575,453 +589,4 @@ onBeforeUnmount(() => {
   </section>
 </template>
 
-<style scoped>
-.contract-stage-card {
-  display: grid;
-  gap: 18px;
-  padding: 22px;
-  border-radius: 28px;
-  border: 1px solid var(--web-border);
-  background:
-    radial-gradient(circle at top left, rgba(14, 116, 144, 0.1), transparent 36%),
-    linear-gradient(180deg, color-mix(in srgb, var(--web-surface) 95%, #fff 5%) 0%, var(--web-surface-soft) 100%);
-  box-shadow: var(--web-shadow);
-}
-
-.contract-stage-head,
-.contract-status-top,
-.contract-payment-title-row,
-.signature-stage-head,
-.contract-otp-head,
-.contract-otp-actions {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.contract-kicker {
-  display: inline-flex;
-  align-items: center;
-  min-height: 28px;
-  padding: 0 12px;
-  border-radius: 999px;
-  background: rgba(14, 116, 144, 0.12);
-  color: #0f766e;
-  font-size: 11px;
-  font-weight: 900;
-  margin-bottom: 10px;
-}
-
-.contract-stage-head h3,
-.signature-stage-head h4,
-.contract-otp-head h4 {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 900;
-}
-
-.contract-stage-head p,
-.contract-status-item p,
-.contract-payment-card p,
-.signature-stage-head p,
-.contract-otp-head p,
-.contract-checklist-box li,
-.contract-passive-note {
-  margin: 6px 0 0;
-  color: var(--web-muted);
-  font-size: 12px;
-  line-height: 1.9;
-}
-
-.contract-stage-badge {
-  min-height: 38px;
-  padding: 0 14px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: 900;
-  white-space: nowrap;
-}
-
-.contract-stage-badge.pending {
-  background: rgba(234, 88, 12, 0.12);
-  color: #c2410c;
-}
-
-.contract-stage-badge.done {
-  background: rgba(34, 197, 94, 0.12);
-  color: #15803d;
-}
-
-.contract-feedback {
-  padding: 13px 15px;
-  border-radius: 18px;
-  border: 1px solid transparent;
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.contract-feedback.tone-success {
-  background: rgba(34, 197, 94, 0.12);
-  border-color: rgba(34, 197, 94, 0.18);
-  color: #15803d;
-}
-
-.contract-feedback.tone-error {
-  background: rgba(239, 68, 68, 0.12);
-  border-color: rgba(239, 68, 68, 0.2);
-  color: #b91c1c;
-}
-
-.contract-feedback.tone-info {
-  background: rgba(59, 130, 246, 0.1);
-  border-color: rgba(59, 130, 246, 0.18);
-  color: #1d4ed8;
-}
-
-.contract-status-grid,
-.contract-payment-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.contract-status-item,
-.contract-payment-card,
-.contract-checklist-box,
-.signature-canvas-wrap,
-.contract-preview-shell {
-  border-radius: 22px;
-  border: 1px solid var(--web-border);
-  background: color-mix(in srgb, var(--web-surface) 80%, transparent);
-}
-
-.contract-status-item,
-.contract-payment-card,
-.contract-checklist-box {
-  padding: 16px;
-}
-
-.contract-status-top strong,
-.contract-payment-title-row strong,
-.contract-checklist-box strong {
-  font-size: 14px;
-  font-weight: 900;
-}
-
-.contract-status-top span,
-.contract-payment-title-row span {
-  font-size: 11px;
-  font-weight: 900;
-}
-
-.contract-status-item.is-done {
-  border-color: rgba(34, 197, 94, 0.22);
-  background: rgba(34, 197, 94, 0.08);
-}
-
-.contract-status-item.is-done span {
-  color: #15803d;
-}
-
-.contract-status-item.is-pending span {
-  color: #b45309;
-}
-
-.contract-payment-card {
-  display: grid;
-  gap: 10px;
-}
-
-.contract-payment-title-row span {
-  color: #0f766e;
-}
-
-.contract-review-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 16px;
-  align-items: start;
-}
-
-.contract-review-side,
-.contract-action-group {
-  display: grid;
-  gap: 12px;
-}
-
-.contract-action-group {
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-}
-
-.contract-primary-btn,
-.contract-secondary-btn {
-  min-height: 46px;
-  padding: 0 18px;
-  border-radius: 16px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: 900;
-}
-
-.contract-primary-btn {
-  border: 1px solid var(--web-primary);
-  background: linear-gradient(135deg, var(--web-primary) 0%, #c2410c 100%);
-  color: #fff;
-}
-
-.contract-secondary-btn {
-  border: 1px solid var(--web-border-strong);
-  background: color-mix(in srgb, var(--web-surface) 82%, transparent);
-  color: var(--web-text);
-}
-
-.contract-passive-note {
-  display: inline-flex;
-}
-
-.contract-checklist-box ul {
-  margin: 12px 0 0;
-  padding: 0 18px 0 0;
-  display: grid;
-  gap: 8px;
-}
-
-.contract-preview-shell {
-  padding: 12px;
-  min-height: 640px;
-}
-
-.contract-preview-shell--inline {
-  width: 100%;
-}
-
-.contract-preview-frame {
-  width: 100%;
-  min-height: 616px;
-  border: 0;
-  border-radius: 18px;
-  background: #fff;
-}
-
-.contract-preview-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 68;
-  display: flex;
-  align-items: stretch;
-  justify-content: center;
-  padding: 14px;
-  background: rgba(15, 23, 42, 0.58);
-  backdrop-filter: blur(12px);
-}
-
-.contract-preview-modal {
-  width: min(100%, 1480px);
-  height: 100%;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 14px;
-  padding: 18px;
-  border-radius: 28px;
-  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
-  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.25);
-}
-
-.contract-preview-modal-head,
-.contract-preview-modal-actions {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.contract-preview-shell--fullscreen {
-  min-height: 100%;
-  height: 100%;
-  padding: 12px;
-}
-
-.contract-preview-frame--fullscreen {
-  min-height: 100%;
-  height: 100%;
-}
-
-.contract-preview-empty {
-  min-height: 280px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--web-muted);
-  font-size: 13px;
-}
-
-.signature-stage-shell {
-  display: grid;
-  gap: 16px;
-}
-
-.signature-canvas-wrap {
-  padding: 14px;
-  background: #fff;
-}
-
-.signature-canvas {
-  width: 100%;
-  display: block;
-  border-radius: 18px;
-  border: 1px dashed rgba(148, 163, 184, 0.44);
-  background: #fff;
-  touch-action: none;
-}
-
-.signature-stage-actions {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.contract-otp-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 70;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 18px;
-  background: rgba(15, 23, 42, 0.5);
-  backdrop-filter: blur(10px);
-}
-
-.contract-otp-modal {
-  width: min(100%, 460px);
-  display: grid;
-  gap: 14px;
-  padding: 20px;
-  border-radius: 28px;
-  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.18);
-}
-
-.contract-otp-close {
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  background: rgba(248, 250, 252, 0.92);
-  color: #0f172a;
-  font-size: 22px;
-  line-height: 1;
-}
-
-.contract-otp-label {
-  font-size: 12px;
-  font-weight: 900;
-  color: #0f172a;
-}
-
-.contract-otp-input {
-  height: 50px;
-  border-radius: 16px;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  background: #fff;
-  padding: 0 16px;
-  font-size: 18px;
-  font-weight: 900;
-}
-
-.contract-modal-fade-enter-active,
-.contract-modal-fade-leave-active {
-  transition: opacity 0.18s ease, transform 0.18s ease;
-}
-
-.contract-modal-fade-enter-from,
-.contract-modal-fade-leave-to {
-  opacity: 0;
-}
-
-@media (max-width: 900px) {
-  .contract-preview-modal,
-  .contract-preview-modal-head,
-  .contract-preview-modal-actions {
-    gap: 10px;
-  }
-}
-
-@media (max-width: 767px) {
-  .contract-stage-card {
-    padding: 18px;
-    border-radius: 24px;
-  }
-
-  .contract-stage-head,
-  .contract-status-top,
-  .contract-payment-title-row,
-  .signature-stage-head,
-  .contract-otp-head,
-  .contract-otp-actions {
-    flex-direction: column;
-  }
-
-  .contract-stage-badge {
-    width: 100%;
-  }
-
-  .contract-status-grid,
-  .contract-payment-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .contract-preview-shell {
-    padding: 8px;
-    min-height: 420px;
-  }
-
-  .contract-preview-frame {
-    min-height: 404px;
-  }
-
-  .contract-primary-btn,
-  .contract-secondary-btn {
-    width: 100%;
-  }
-
-  .signature-stage-actions {
-    flex-direction: column;
-  }
-
-  .contract-otp-overlay {
-    align-items: flex-end;
-    padding: 0;
-  }
-
-  .contract-preview-overlay {
-    padding: 0;
-    align-items: flex-end;
-  }
-
-  .contract-preview-modal {
-    width: 100%;
-    height: 92vh;
-    padding: 16px;
-    border-radius: 28px 28px 0 0;
-  }
-
-  .contract-preview-modal-head,
-  .contract-preview-modal-actions {
-    flex-direction: column;
-  }
-
-  .contract-otp-modal {
-    width: 100%;
-    border-radius: 28px 28px 0 0;
-    padding: 18px 16px 22px;
-  }
-}
-</style>
+<style scoped src="./styles/CustomerDealContractStage.css"></style>

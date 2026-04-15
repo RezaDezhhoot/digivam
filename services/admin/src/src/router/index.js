@@ -77,6 +77,16 @@ const routes = [
         path: 'admins',
         name: 'admins',
         component: () => import('../views/AdminsView.vue')
+      },
+      {
+        path: 'tutorials',
+        name: 'tutorials',
+        component: () => import('../views/TutorialsView.vue')
+      },
+      {
+        path: 'withdrawals',
+        name: 'withdrawals',
+        component: () => import('../views/WithdrawalsView.vue')
       }
     ]
   }

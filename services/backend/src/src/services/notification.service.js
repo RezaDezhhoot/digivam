@@ -297,3 +297,24 @@ export const buildNotificationSearchWhere = (search) => {
     ]
   };
 };
+
+export const buildDealNotificationMetadata = ({ dealId, recipientType }) => {
+  const numericDealId = Number(dealId || 0);
+
+  if (!numericDealId || !recipientType) {
+    return null;
+  }
+
+  const detailPath =
+    recipientType === Notification.MODEL_TYPES.CUSTOMER
+      ? `/customer/deals/${numericDealId}`
+      : recipientType === Notification.MODEL_TYPES.BROKER
+        ? `/deals/${numericDealId}`
+        : `/deals/${numericDealId}`;
+
+  return {
+    entity: 'deal',
+    dealId: numericDealId,
+    detailPath
+  };
+};

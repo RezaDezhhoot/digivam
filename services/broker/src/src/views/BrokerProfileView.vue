@@ -117,6 +117,8 @@ const saveLevel2 = async () => {
     await load();
     activeStep.value = 3;
   } catch (error) {
+    console.log(error);
+    
     toast.error(error.message);
   } finally {
     uploadingDocuments.value = false;
@@ -327,116 +329,4 @@ onMounted(load);
   </section>
 </template>
 
-<style scoped>
-.page-header {
-  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-  background: var(--surface-color); border: 1px solid var(--panel-border);
-  border-radius: 14px; padding: 18px 20px; box-shadow: var(--panel-shadow);
-}
-.page-header-icon {
-  width: 44px; height: 44px; border-radius: 12px;
-  background: var(--chip-bg); color: var(--brand-primary);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 18px; flex-shrink: 0;
-}
-.page-header-title { font-size: 17px; font-weight: 700; margin: 0; }
-.page-header-desc { font-size: 13px; color: var(--muted-text); margin: 2px 0 0; }
-
-.chip {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 8px 14px; border-radius: 999px;
-  background: var(--chip-bg); color: var(--chip-text);
-  font-size: 13px; font-weight: 700; white-space: nowrap;
-}
-
-.page-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.chip-success {
-  background: rgba(22, 163, 74, 0.12);
-  color: #15803d;
-}
-
-.chip-warning {
-  background: #fff4d8;
-  color: #b45309;
-}
-
-.profile-stepper { display: flex; align-items: center; gap: 10px; }
-.stepper-item { display: flex; align-items: center; gap: 8px; color: var(--muted-text); font-size: 14px; }
-.stepper-item p { margin: 0; white-space: nowrap; }
-.stepper-badge {
-  width: 34px; height: 34px; border-radius: 999px;
-  display: inline-flex; align-items: center; justify-content: center;
-  border: 2px solid var(--panel-border-strong);
-  background: var(--surface-color); font-weight: 700; font-size: 13px;
-  transition: all 0.3s ease;
-}
-.stepper-item.active { color: var(--brand-primary); font-weight: 700; }
-.stepper-item.active .stepper-badge { background: var(--brand-primary); color: #fff; border-color: var(--brand-primary); }
-.stepper-item.done .stepper-badge { background: #22c55e; color: #fff; border-color: #22c55e; }
-.stepper-line { flex: 1; height: 2px; background: var(--panel-border); transition: background 0.3s ease; }
-.stepper-line.active { background: var(--brand-primary); }
-
-.content-card {
-  background: var(--surface-color); border: 1px solid var(--panel-border);
-  border-radius: 14px; padding: 24px; box-shadow: var(--panel-shadow);
-  position: relative;
-}
-.card-section-title { font-size: 16px; font-weight: 700; margin-bottom: 20px; }
-
-.verify-success-panel {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  padding: 16px 18px;
-  border-radius: 14px;
-  background: rgba(22, 163, 74, 0.08);
-  border: 1px solid rgba(22, 163, 74, 0.16);
-}
-
-.verify-success-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  background: rgba(22, 163, 74, 0.12);
-  color: #15803d;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.verify-success-title {
-  font-size: 15px;
-  font-weight: 700;
-  margin: 0 0 6px;
-}
-
-.verify-success-desc {
-  font-size: 13px;
-  color: var(--muted-text);
-  line-height: 1.9;
-  margin: 0;
-}
-
-.preview-box {
-  border: 2px dashed var(--panel-border-strong);
-  border-radius: 12px; padding: 12px; display: inline-flex;
-}
-.preview-image { max-width: 120px; height: auto; border-radius: 10px; }
-.preview-avatar { max-width: 140px; }
-
-.upload-progress-shell { height: 14px; border-radius: 999px; background: rgba(219,0,0,0.08); }
-.upload-progress-shell .progress-bar { background: var(--brand-primary); border-radius: 999px; font-size: 10px; }
-
-@media (max-width: 767px) {
-  .profile-stepper { overflow-x: auto; padding-bottom: 8px; }
-  .page-header { flex-direction: column; align-items: flex-start; }
-  .page-header .ms-auto { margin: 0 !important; }
-}
-</style>
+<style scoped src="./styles/BrokerProfileView.css"></style>

@@ -47,7 +47,7 @@ export const Deal = sequelize.define(
     },
     actBy: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,
       defaultValue: DEAL_ACT_BY.CUSTOMER,
       field: 'act_by'
     },
@@ -114,6 +114,22 @@ export const Deal = sequelize.define(
       allowNull: true,
       field: 'contract_data'
     },
+    adminReviewMode: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      field: 'admin_review_mode'
+    },
+    adminReviewData: {
+      type: DataTypes.JSON,
+      allowNull: true,
+      field: 'admin_review_data'
+    },
+    transferData: {
+      type: DataTypes.JSON,
+      allowNull: true,
+      field: 'transfer_data'
+    },
     contractSignedByCustomer: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
@@ -130,6 +146,16 @@ export const Deal = sequelize.define(
       type: DataTypes.JSON,
       allowNull: true,
       field: 'customer_validation_data'
+    },
+    brokerConfirmationAmount: {
+      type: DataTypes.DECIMAL(64, 0),
+      allowNull: true,
+      field: 'broker_confirmation_amount'
+    },
+    settledAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: 'settled_at'
     },
     submittedDocumentsAt: {
       type: DataTypes.DATE,

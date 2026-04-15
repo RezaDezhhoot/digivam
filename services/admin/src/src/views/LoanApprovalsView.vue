@@ -2,7 +2,7 @@
 import { onMounted, ref } from 'vue';
 import AppPagination from '../components/AppPagination.vue';
 import RecipientNotificationsPanel from '../components/RecipientNotificationsPanel.vue';
-import { deleteBroker, getBrokers, updateBrokerLevel } from '../services/admin-api.js';
+import { deleteBroker, getBrokers, updateBrokerLevel, updateBrokerSuspension, adminBrokerWalletDeposit, adminBrokerWalletWithdraw } from '../services/admin-api.js';
 import { useAppToast } from '../composables/useToast.js';
 import { useConfirm } from '../composables/useConfirm.js';
 
@@ -53,6 +53,43 @@ const changeLevel = async (item, level) => {
   } catch (error) { toast.error(error.message); }
 };
 
+const toggleSuspension = async (item) => {
+  const isSuspended = Boolean(item.isSuspended);
+
+  if (isSuspended) {
+    const ok = await confirm({ title: 'رفع تعلیق کارگزار', text: 'آیا از رفع تعلیق این کارگزار مطمئن هستید؟' });
+    if (!ok) return;
+
+    try {
+      await updateBrokerSuspension(item.id, { isSuspended: false, suspendReason: '' });
+      toast.success('تعلیق کارگزار برداشته شد');
+      await load();
+    } catch (error) {
+      toast.error(error.message);
+    }
+
+    return;
+  }
+
+  const reason = window.prompt('علت تعلیق کارگزار را وارد کنید');
+  if (reason === null) {
+    return;
+  }
+
+  if (!reason.trim()) {
+    toast.error('ثبت علت تعلیق الزامی است');
+    return;
+  }
+
+  try {
+    await updateBrokerSuspension(item.id, { isSuspended: true, suspendReason: reason.trim() });
+    toast.success('حساب کارگزار معلق شد');
+    await load();
+  } catch (error) {
+    toast.error(error.message);
+  }
+};
+
 const removeItem = async (id) => {
   const ok = await confirm({ title: 'حذف کارگزار', text: 'آیا از حذف این کارگزار مطمئن هستید؟' });
   if (!ok) return;
@@ -70,6 +107,46 @@ const openNotifications = (item) => {
     phone: item.phone || '-'
   };
   window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+};
+
+const walletTarget = ref(null);
+const walletOp = ref('deposit');
+const walletAmount = ref('');
+const walletDescription = ref('');
+const walletSaving = ref(false);
+
+const openWalletModal = (item, op) => {
+  walletTarget.value = item;
+  walletOp.value = op;
+  walletAmount.value = '';
+  walletDescription.value = '';
+};
+
+const closeWalletModal = () => {
+  walletTarget.value = null;
+  walletAmount.value = '';
+  walletDescription.value = '';
+};
+
+const submitWalletOp = async () => {
+  const amount = Number(walletAmount.value);
+  if (!amount || amount < 1) {
+    toast.error('مبلغ معتبر وارد کنید');
+    return;
+  }
+  walletSaving.value = true;
+  try {
+    const payload = { amount, description: walletDescription.value.trim() || undefined };
+    const fn = walletOp.value === 'deposit' ? adminBrokerWalletDeposit : adminBrokerWalletWithdraw;
+    const data = await fn(walletTarget.value.id, payload);
+    toast.success(data.message || 'عملیات انجام شد');
+    closeWalletModal();
+    await load();
+  } catch (error) {
+    toast.error(error.message);
+  } finally {
+    walletSaving.value = false;
+  }
 };
 
 const levelBadge = (level) => {
@@ -123,6 +200,7 @@ onMounted(load);
               <th>کد ملی</th>
               <th>موجودی کیف پول</th>
               <th>سطح احراز</th>
+              <th>وضعیت حساب</th>
               <th>عملیات</th>
             </tr>
           </thead>
@@ -144,9 +222,27 @@ onMounted(load);
                 </select>
               </td>
               <td>
+                <div class="account-state-cell">
+                  <span class="account-state-badge" :class="item.isSuspended ? 'is-suspended' : 'is-active'">
+                    {{ item.isSuspended ? 'معلق' : 'فعال' }}
+                  </span>
+                  <p v-if="item.isSuspended && item.suspendReason" class="account-state-reason">{{ item.suspendReason }}</p>
+                </div>
+              </td>
+              <td>
                 <div class="d-flex gap-2 flex-wrap">
+                  <button class="btn btn-sm btn-outline-success" @click="openWalletModal(item, 'deposit')">
+                    <i class="fa-solid fa-plus me-1"></i> واریز
+                  </button>
+                  <button class="btn btn-sm btn-outline-danger" @click="openWalletModal(item, 'withdraw')">
+                    <i class="fa-solid fa-minus me-1"></i> برداشت
+                  </button>
                   <button class="btn btn-sm btn-outline-primary" @click="openNotifications(item)">
                     <i class="fa-solid fa-bell me-1"></i> نوتیفیکیشن
+                  </button>
+                  <button class="btn btn-sm" :class="item.isSuspended ? 'btn-outline-success' : 'btn-outline-warning'" @click="toggleSuspension(item)">
+                    <i :class="item.isSuspended ? 'fa-solid fa-lock-open me-1' : 'fa-solid fa-ban me-1'"></i>
+                    {{ item.isSuspended ? 'رفع تعلیق' : 'تعلیق' }}
                   </button>
                   <button class="btn btn-sm btn-outline-danger" @click="removeItem(item.id)">
                     <i class="fa-solid fa-trash-can me-1"></i> حذف
@@ -166,92 +262,48 @@ onMounted(load);
       :recipient="notificationTarget"
       @close="notificationTarget = null"
     />
+
+    <!-- Wallet Operation Modal -->
+    <teleport to="body">
+      <div v-if="walletTarget" class="wallet-modal-backdrop" @click.self="closeWalletModal">
+        <div class="modal d-block" tabindex="-1" @click.self="closeWalletModal">
+          <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title">
+                  <i :class="walletOp === 'deposit' ? 'fa-solid fa-plus text-success' : 'fa-solid fa-minus text-danger'" class="me-2"></i>
+                  {{ walletOp === 'deposit' ? 'واریز به کیف پول' : 'برداشت از کیف پول' }}
+                </h5>
+                <button type="button" class="btn-close" @click="closeWalletModal"></button>
+              </div>
+              <div class="modal-body">
+                <p class="mb-3">
+                  <strong>{{ walletTarget.name || '-' }}</strong> — {{ walletTarget.phone || '-' }}
+                  <br /><small class="text-muted">موجودی فعلی: {{ formatMoney(walletTarget.walletBalance) }}</small>
+                </p>
+                <div class="mb-3">
+                  <label class="form-label">مبلغ (تومان)</label>
+                  <input v-model="walletAmount" type="number" min="1" class="form-control" placeholder="مبلغ را وارد کنید" />
+                  <small v-if="Number(walletAmount) > 0" class="text-muted d-block mt-1">{{ formatMoney(walletAmount) }}</small>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label">توضیحات (اختیاری)</label>
+                  <textarea v-model="walletDescription" class="form-control" rows="2" maxlength="500" placeholder="توضیح کوتاه..."></textarea>
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" @click="closeWalletModal">انصراف</button>
+                <button type="button" class="btn" :class="walletOp === 'deposit' ? 'btn-success' : 'btn-danger'" :disabled="walletSaving" @click="submitWalletOp">
+                  <i v-if="walletSaving" class="fa-solid fa-spinner fa-spin me-1"></i>
+                  {{ walletOp === 'deposit' ? 'واریز' : 'برداشت' }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </teleport>
   </div>
 </template>
 
-<style scoped>
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-bottom: 20px;
-}
-
-.page-header-info {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.page-header-icon {
-  width: 46px;
-  height: 46px;
-  border-radius: 12px;
-  background: var(--admin-primary-light);
-  color: var(--admin-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-}
-
-.page-title {
-  font-size: 18px;
-  font-weight: 700;
-  margin: 0;
-}
-
-.page-subtitle {
-  font-size: 13px;
-  color: var(--admin-muted);
-  margin: 2px 0 0;
-}
-
-.page-header-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.search-box {
-  position: relative;
-}
-
-.search-icon {
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--admin-muted);
-  font-size: 13px;
-}
-
-.search-input {
-  padding-right: 36px;
-  min-width: 200px;
-}
-
-.filter-select {
-  min-width: 130px;
-}
-
-.level-select {
-  min-width: 100px;
-  border-radius: 8px;
-}
-
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 48px 24px;
-  color: var(--admin-muted);
-  gap: 10px;
-}
-
-.empty-state i { font-size: 36px; opacity: 0.5; }
-.user-avatar { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; border: 2px solid var(--admin-border); }
-.user-avatar-placeholder { width: 38px; height: 38px; border-radius: 50%; background: var(--admin-surface-soft, #f0f0f0); display: inline-flex; align-items: center; justify-content: center; color: var(--admin-muted); font-size: 14px; border: 2px solid var(--admin-border); }
-</style>
+<style scoped src="./styles/LoanApprovalsView.css"></style>

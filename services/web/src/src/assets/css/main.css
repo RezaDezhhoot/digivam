@@ -162,6 +162,14 @@ textarea {
   z-index: 1;
 }
 
+.web-app-shell:has(.home-filter-overlay.open) .mobile-quick-nav,
+.web-app-shell:has(.market-filter-overlay.open) .mobile-quick-nav {
+  z-index: 0 !important;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.18s ease, z-index 0s;
+}
+
 .web-main-home {
   padding-bottom: 0;
 }
@@ -228,9 +236,11 @@ textarea {
 }
 
 .site-brand-image {
-  width: 230px;
-  max-width: 100%;
+  width: auto;
+  max-width: 180px;
+  max-height: 48px;
   height: auto;
+  object-fit: contain;
 }
 
 .site-nav {
@@ -466,7 +476,8 @@ textarea {
   }
 
   .site-brand-image {
-    width: 172px;
+    max-width: 140px;
+    max-height: 40px;
   }
 }
 

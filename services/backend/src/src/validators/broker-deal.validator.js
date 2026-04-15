@@ -5,6 +5,10 @@ export const brokerDealIdValidator = [param('id').isInt({ gt: 0 }).withMessage('
 
 export const reviewBrokerDealValidator = [
   body('action').isIn(['approve', 'reject']).withMessage('عملیات بررسی نامعتبر است'),
+  body('confirm')
+    .optional({ values: 'falsy' })
+    .custom((value) => ['1', 'true', true].includes(value))
+    .withMessage('تایید نهایی نامعتبر است'),
   body('reason')
     .optional()
     .isLength({ max: 5000 })
@@ -31,6 +35,10 @@ export const reviewBrokerDealValidator = [
     }
 
     if (value?.action === 'approve') {
+      if (!['1', 'true', true].includes(value?.confirm)) {
+        throw new Error('برای تایید معامله باید تایید نهایی ثبت شود');
+      }
+
       const paymentTypes = Array.isArray(value?.paymentTypes) ? value.paymentTypes : [];
 
       if (!paymentTypes.length) {
@@ -45,6 +53,27 @@ export const reviewBrokerDealValidator = [
         }
         seen.add(paymentType);
       }
+    }
+
+    return true;
+  })
+];
+
+export const brokerDealTransferSubmitValidator = [
+  param('id').isInt({ gt: 0 }).withMessage('شناسه معامله نامعتبر است'),
+  body('description')
+    .isLength({ min: 3, max: 5000 })
+    .withMessage('توضیحات انتقال باید بین ۳ تا ۵۰۰۰ کاراکتر باشد'),
+  body('fileTitles').custom((value, { req }) => {
+    const titles = Array.isArray(value) ? value : (value ? [value] : []);
+    req.body.fileTitles = titles;
+
+    if (!titles.length) {
+      throw new Error('برای فایل‌های انتقال عنوان وارد نشده است');
+    }
+
+    if (titles.some((item) => !String(item || '').trim())) {
+      throw new Error('عنوان هر فایل انتقال الزامی است');
     }
 
     return true;

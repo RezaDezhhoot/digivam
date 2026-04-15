@@ -1,4 +1,4 @@
-import { Op } from 'sequelize';
+import { Op, Sequelize } from 'sequelize';
 import { sequelize } from '../config/database.js';
 import { env } from '../config/env.js';
 import '../models/index.js';
@@ -20,8 +20,9 @@ const publicFacilityInclude = [
   {
     model: Broker,
     as: 'broker',
-    required: false,
-    attributes: ['id', 'name', 'phone', 'verifyLevel', 'rate', 'metadata', 'createdAt']
+    required: true,
+    attributes: ['id', 'name', 'phone', 'verifyLevel', 'rate', 'metadata', 'createdAt', [sequelize.literal("(SELECT COUNT(*) FROM deals WHERE deals.broker_id = broker.id)"),"brokerRequestCount"]],
+    where: { isSuspended: false }
   },
   {
     model: Type,
@@ -302,7 +303,7 @@ export const serializeWebFacility = (item) => {
     minAmount: Number(base.minAmount || 0),
     maxAmount: Number(base.maxAmount || 0),
     withdrawDeadline: base.withdrawDeadline,
-    requestCount: Number(publicContent.requestCount || 0),
+    requestCount: Number(raw.requestCount || 0),
     rating: Number(raw.broker?.rate || publicContent.rating || 0),
     averageReviewHours: Number(raw.averageReviewHours || publicContent.averageReviewHours || 0),
     documentsCount: Number(publicContent.documentsCount || base.requiredDocuments?.length || 0),
@@ -336,11 +337,9 @@ export const serializeWebFacility = (item) => {
       id: raw.broker?.id || base.brokerId,
       name: raw.broker?.name || 'کارگزار نامشخص',
       phone: raw.broker?.phone || '-',
-      rating: Number(publicContent.brokerRating || raw.broker?.rate || publicContent.rating || 0),
-      requestCount: Number(publicContent.brokerRequestCount || publicContent.requestCount || 0),
-      startedAtLabel:
-        String(publicContent.brokerStartedAt || parseObject(raw.broker?.metadata).startedAtLabel || '').trim() ||
-        (raw.broker?.createdAt ? new Date(raw.broker.createdAt).getFullYear().toString() : '-'),
+      rating: Number(raw.broker?.rate || publicContent.rating || 0),
+      requestCount: Number(raw.broker?.brokerRequestCount || 0),
+      startedAtLabel:(raw.broker?.createdAt ? new Date(raw.broker.createdAt).toLocaleString("fa-IR",{ dateStyle: 'short', timeStyle: undefined }) : '-'),
       summary:
         String(publicContent.brokerSummary || 'بر اساس شرایط وام شما، بهترین گزینه را انتخاب کرده‌ایم').trim() ||
         'بر اساس شرایط وام شما، بهترین گزینه را انتخاب کرده‌ایم'
@@ -385,12 +384,14 @@ export const listPublishedWebFacilities = async (filters = {}) => {
     include: publicFacilityInclude,
     attributes: {
       include: [
-        [sequelize.literal('(SELECT COUNT(*) FROM facility_bookmarks WHERE facility_bookmarks.facility_id = Facility.id)'), 'bookmarkCount']
+        [sequelize.literal('(SELECT COUNT(*) FROM facility_bookmarks WHERE facility_bookmarks.facility_id = Facility.id)'), 'bookmarkCount'],
+        [sequelize.literal('(SELECT COUNT(*) FROM deals WHERE deals.facility_id = Facility.id)'), 'requestCount'],
       ]
     },
     order: [['updatedAt', 'DESC'], ['id', 'DESC']],
     distinct: true
   });
+  
 
   let items = rows.map(serializeWebFacility);
 
@@ -493,7 +494,8 @@ export const findPublishedWebFacilityBySlug = async (slug) => {
     include: publicFacilityInclude,
     attributes: {
       include: [
-        [sequelize.literal('(SELECT COUNT(*) FROM facility_bookmarks WHERE facility_bookmarks.facility_id = Facility.id)'), 'bookmarkCount']
+        [sequelize.literal('(SELECT COUNT(*) FROM facility_bookmarks WHERE facility_bookmarks.facility_id = Facility.id)'), 'bookmarkCount'],
+        [sequelize.literal('(SELECT COUNT(*) FROM deals WHERE deals.facility_id = Facility.id)'), 'requestCount'],
       ]
     }
   });

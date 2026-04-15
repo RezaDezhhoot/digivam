@@ -21,6 +21,7 @@ const optionLoading = ref(false);
 const saving = ref(false);
 const reviewLoading = ref(false);
 const deleting = ref(false);
+const exportLoading = ref(false);
 const activeTab = ref('details');
 const page = ref(1);
 const limit = ref(10);
@@ -136,8 +137,8 @@ const activateTab = (tab) => {
   activeTab.value = tab;
 };
 
-const buildQuery = () => {
-  const params = new URLSearchParams({ page: String(page.value), limit: String(limit.value) });
+const buildQuery = ({ page: nextPage = page.value, limit: nextLimit = limit.value } = {}) => {
+  const params = new URLSearchParams({ page: String(nextPage), limit: String(nextLimit) });
 
   if (search.value.trim()) params.set('search', search.value.trim());
   if (statusFilter.value) params.set('status', statusFilter.value);
@@ -145,6 +146,47 @@ const buildQuery = () => {
   if (typeFilter.value) params.set('type', typeFilter.value);
 
   return `?${params.toString()}`;
+};
+
+const exportFacilitiesToExcel = async () => {
+  exportLoading.value = true;
+  try {
+    const data = await getFacilities(buildQuery({ page: 1, limit: Math.max(total.value || 0, 1000) }));
+    const exportItems = Array.isArray(data.items) ? data.items : [];
+    if (!exportItems.length) {
+      toast.warning('داده‌ای برای خروجی اکسل وجود ندارد');
+      return;
+    }
+
+    const XLSX = await import('xlsx');
+    const rows = exportItems.map((item, index) => ({
+      'ردیف': index + 1,
+      'شناسه': item.id,
+      'عنوان': item.title || '-',
+      'اسلاگ': item.slug || '-',
+      'کارگزار': item.brokerName || '-',
+      'موبایل کارگزار': item.brokerPhone || '-',
+      'نوع وام': item.loanTypeTitle || '-',
+      'نوع معامله': item.typeLabel || '-',
+      'حداقل مبلغ': Number(item.minAmount || 0),
+      'حداکثر مبلغ': Number(item.maxAmount || 0),
+      'بازدید': Number(item.views || 0),
+      'نشان‌شده': Number(item.bookmarkCount || 0),
+      'وضعیت': item.statusLabel || item.status || '-',
+      'دلیل بررسی': item.resultReason || '-',
+      'آخرین بروزرسانی': formatDate(item.updatedAt)
+    }));
+
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Facilities');
+    XLSX.writeFile(workbook, `admin-facilities-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast.success('خروجی اکسل امتیازهای وام آماده شد');
+  } catch (error) {
+    toast.error(error.message || 'ساخت خروجی اکسل با خطا مواجه شد');
+  } finally {
+    exportLoading.value = false;
+  }
 };
 
 const loadOptions = async () => {
@@ -499,6 +541,7 @@ onMounted(async () => {
               <input v-model="form.minAmount" type="number" :min="amountLimits.min" :max="amountLimits.max" class="form-control" placeholder="1000000" />
               <span class="input-group-text">تومان</span>
             </div>
+            <small v-if="Number(form.minAmount)" class="text-muted d-block mt-1">{{ formatMoney(form.minAmount) }}</small>
           </div>
           <div class="col-12 col-md-6 col-xl-3">
             <label class="form-label form-label-required">حداکثر مبلغ</label>
@@ -506,6 +549,7 @@ onMounted(async () => {
               <input v-model="form.maxAmount" type="number" :min="amountLimits.min" :max="amountLimits.max" class="form-control" placeholder="50000000" />
               <span class="input-group-text">تومان</span>
             </div>
+            <small v-if="Number(form.maxAmount)" class="text-muted d-block mt-1">{{ formatMoney(form.maxAmount) }}</small>
           </div>
           <div class="col-12 col-md-6 col-xl-3">
             <label class="form-label form-label-required">مهلت برداشت</label>
@@ -857,6 +901,10 @@ onMounted(async () => {
         <button class="btn btn-outline-secondary" @click="clearFilters">
           <i class="fa-solid fa-rotate-left me-1"></i> پاکسازی
         </button>
+        <button class="btn btn-outline-secondary" :disabled="exportLoading || loading" @click="exportFacilitiesToExcel">
+          <i v-if="exportLoading" class="fa-solid fa-spinner fa-spin me-1"></i>
+          <i v-else class="fa-solid fa-file-excel me-1"></i> خروجی اکسل
+        </button>
       </div>
 
       <div v-if="loading" class="spinner-overlay">
@@ -928,413 +976,4 @@ onMounted(async () => {
   </div>
 </template>
 
-<style scoped>
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-bottom: 20px;
-}
-
-.page-header-info {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.page-header-icon {
-  width: 46px;
-  height: 46px;
-  border-radius: 12px;
-  background: var(--admin-primary-light);
-  color: var(--admin-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-}
-
-.page-title {
-  font-size: 18px;
-  font-weight: 700;
-  margin: 0;
-}
-
-.page-subtitle {
-  font-size: 13px;
-  color: var(--admin-muted);
-  margin: 2px 0 0;
-}
-
-.page-header-badge {
-  padding: 10px 14px;
-  border-radius: 999px;
-  background: var(--admin-primary-light);
-  color: var(--admin-primary);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.facility-card {
-  position: relative;
-  overflow: hidden;
-}
-
-.facility-tab-row {
-  display: flex;
-  align-items: stretch;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 20px;
-}
-
-.facility-tab {
-  min-width: 240px;
-  flex: 1 1 260px;
-  border: 1px solid var(--admin-border);
-  background: var(--admin-surface-soft);
-  border-radius: 18px;
-  padding: 16px 18px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  text-align: right;
-  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
-}
-
-.facility-tab strong,
-.facility-tab small {
-  display: block;
-}
-
-.facility-tab small {
-  color: var(--admin-muted);
-  margin-top: 4px;
-}
-
-.facility-tab:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: var(--admin-shadow);
-}
-
-.facility-tab.active {
-  border-color: rgba(11, 95, 131, 0.28);
-  background: linear-gradient(135deg, rgba(11, 95, 131, 0.08), rgba(34, 160, 107, 0.06));
-}
-
-.facility-tab:disabled,
-.facility-tab.disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.facility-tab-badge,
-.editing-chip {
-  flex-shrink: 0;
-}
-
-.facility-tab-badge {
-  width: 38px;
-  height: 38px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: #fff;
-  border: 1px solid var(--admin-border);
-  font-weight: 800;
-  color: var(--admin-primary);
-}
-
-.editing-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  border-radius: 999px;
-  background: #eff6ff;
-  color: #1d4ed8;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.amount-group .input-group-text {
-  background: var(--admin-surface-soft);
-  border-color: var(--admin-border);
-  color: var(--admin-muted);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.amount-hint-card,
-.facility-section-card,
-.review-card,
-.info-panel {
-  border: 1px solid var(--admin-border);
-  border-radius: 18px;
-  background: var(--admin-surface-soft);
-  padding: 18px;
-  height: 100%;
-}
-
-.amount-hint-card {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--admin-muted);
-}
-
-.amount-hint-card i {
-  color: var(--admin-primary);
-}
-
-.info-panel-title,
-.section-card-title {
-  font-size: 15px;
-  font-weight: 800;
-  margin: 0 0 6px;
-}
-
-.section-card-subtitle,
-.field-note,
-.info-panel-line {
-  font-size: 12px;
-  color: var(--admin-muted);
-}
-
-.info-panel-line {
-  margin-top: 8px;
-  font-size: 13px;
-}
-
-.section-card-head {
-  margin-bottom: 12px;
-}
-
-.check-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.check-tile-btn {
-  text-align: right;
-  border: 1px solid var(--admin-border);
-  background: #fff;
-  border-radius: 14px;
-  padding: 14px;
-  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
-}
-
-.check-tile-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--admin-shadow);
-}
-
-.check-tile-btn.active {
-  border-color: rgba(11, 95, 131, 0.35);
-  background: var(--admin-primary-light);
-}
-
-.check-tile-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 6px;
-}
-
-.check-indicator {
-  width: 28px;
-  height: 28px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(11, 95, 131, 0.08);
-  color: var(--admin-primary);
-}
-
-.entry-box {
-  min-height: 148px;
-}
-
-.entry-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: stretch;
-}
-
-.entry-row .btn {
-  min-width: 132px;
-}
-
-.entry-empty {
-  margin-top: 14px;
-  border: 1px dashed var(--admin-border);
-  border-radius: 14px;
-  padding: 16px;
-  color: var(--admin-muted);
-  background: rgba(255, 255, 255, 0.55);
-}
-
-.chip-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.value-chip {
-  border: 1px solid #dbeafe;
-  background: #eff6ff;
-  color: #1d4ed8;
-  border-radius: 999px;
-  padding: 8px 12px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.value-chip-alt {
-  border-color: #dcfce7;
-  background: #f0fdf4;
-  color: #166534;
-}
-
-.filter-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1.7fr) repeat(2, minmax(0, 180px)) minmax(0, 260px) auto;
-  gap: 12px;
-  padding: 18px 18px 0;
-  align-items: center;
-}
-
-.search-box {
-  position: relative;
-}
-
-.search-icon {
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--admin-muted);
-  font-size: 13px;
-}
-
-.search-input {
-  padding-right: 36px;
-}
-
-.compact-select {
-  min-width: 0;
-}
-
-.type-chip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 12px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.chip-yellow { background: #fef3c7; color: #b45309; }
-.chip-green { background: #dcfce7; color: #166534; }
-.chip-red { background: #ffe4e6; color: #be123c; }
-.chip-blue { background: #dbeafe; color: #1d4ed8; }
-.chip-gray { background: #e5e7eb; color: #4b5563; }
-
-.reason-box {
-  max-width: 260px;
-  color: var(--admin-muted);
-  font-size: 13px;
-  line-height: 1.8;
-}
-
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 48px 24px;
-  color: var(--admin-muted);
-  gap: 10px;
-}
-
-.empty-state i {
-  font-size: 36px;
-  opacity: 0.45;
-}
-
-.compact-spinner {
-  padding: 32px 0;
-}
-
-@media (max-width: 1199px) {
-  .filter-row,
-  .check-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 767px) {
-  .entry-row {
-    grid-template-columns: 1fr;
-  }
-
-  .entry-row .btn,
-  .facility-tab {
-    width: 100%;
-  }
-}
-
-.document-select-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 10px;
-}
-
-.document-select-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
-  border: 1.5px solid var(--admin-border);
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.18s;
-  background: var(--admin-primary-light);
-  color: var(--admin-text) !important;
-}
-
-.document-select-item:hover {
-  border-color: var(--admin-primary);
-  background: rgba(11, 95, 131, 0.03);
-}
-
-.document-select-item.selected {
-  border-color: var(--admin-primary);
-  background: rgba(11, 95, 131, 0.07);
-}
-
-.document-select-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.document-select-info strong {
-  font-size: 0.92rem;
-  color: var(--admin-color);
-}
-
-.document-select-info small {
-  font-size: 0.78rem;
-  color: var(--admin-muted);
-}
-</style>
+<style scoped src="./styles/FacilitiesView.css"></style>

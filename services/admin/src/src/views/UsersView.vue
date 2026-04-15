@@ -2,7 +2,7 @@
 import { onMounted, ref } from 'vue';
 import AppPagination from '../components/AppPagination.vue';
 import RecipientNotificationsPanel from '../components/RecipientNotificationsPanel.vue';
-import { deleteCustomer, getCustomers } from '../services/admin-api.js';
+import { deleteCustomer, getCustomers, updateCustomerSuspension } from '../services/admin-api.js';
 import { useAppToast } from '../composables/useToast.js';
 import { useConfirm } from '../composables/useConfirm.js';
 
@@ -43,6 +43,43 @@ const applyFilters = async () => {
 const changePage = async (nextPage) => {
   page.value = nextPage;
   await load();
+};
+
+const toggleSuspension = async (item) => {
+  const isSuspended = Boolean(item.isSuspended);
+
+  if (isSuspended) {
+    const ok = await confirm({ title: 'رفع تعلیق مشتری', text: 'آیا از رفع تعلیق این مشتری مطمئن هستید؟' });
+    if (!ok) return;
+
+    try {
+      await updateCustomerSuspension(item.id, { isSuspended: false, suspendReason: '' });
+      toast.success('تعلیق مشتری برداشته شد');
+      await load();
+    } catch (error) {
+      toast.error(error.message);
+    }
+
+    return;
+  }
+
+  const reason = window.prompt('علت تعلیق مشتری را وارد کنید');
+  if (reason === null) {
+    return;
+  }
+
+  if (!reason.trim()) {
+    toast.error('ثبت علت تعلیق الزامی است');
+    return;
+  }
+
+  try {
+    await updateCustomerSuspension(item.id, { isSuspended: true, suspendReason: reason.trim() });
+    toast.success('حساب مشتری معلق شد');
+    await load();
+  } catch (error) {
+    toast.error(error.message);
+  }
 };
 
 const removeItem = async (id) => {
@@ -103,6 +140,7 @@ onMounted(load);
               <th>شماره همراه</th>
               <th>کد ملی</th>
               <th>موجودی کیف پول</th>
+              <th>وضعیت حساب</th>
               <th>عملیات</th>
             </tr>
           </thead>
@@ -117,9 +155,21 @@ onMounted(load);
               <td >{{ item.nationalCode || '-' }}</td>
               <td class="fw-semibold">{{ formatMoney(item.walletBalance) }}</td>
               <td>
+                <div class="account-state-cell">
+                  <span class="account-state-badge" :class="item.isSuspended ? 'is-suspended' : 'is-active'">
+                    {{ item.isSuspended ? 'معلق' : 'فعال' }}
+                  </span>
+                  <p v-if="item.isSuspended && item.suspendReason" class="account-state-reason">{{ item.suspendReason }}</p>
+                </div>
+              </td>
+              <td>
                 <div class="d-flex gap-2 flex-wrap">
                   <button class="btn btn-sm btn-outline-primary" @click="openNotifications(item)">
                     <i class="fa-solid fa-bell me-1"></i> نوتیفیکیشن
+                  </button>
+                  <button class="btn btn-sm" :class="item.isSuspended ? 'btn-outline-success' : 'btn-outline-warning'" @click="toggleSuspension(item)">
+                    <i :class="item.isSuspended ? 'fa-solid fa-lock-open me-1' : 'fa-solid fa-ban me-1'"></i>
+                    {{ item.isSuspended ? 'رفع تعلیق' : 'تعلیق' }}
                   </button>
                   <button class="btn btn-sm btn-outline-danger" @click="removeItem(item.id)">
                     <i class="fa-solid fa-trash-can me-1"></i> حذف
@@ -142,17 +192,4 @@ onMounted(load);
   </div>
 </template>
 
-<style scoped>
-.page-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
-.page-header-info { display: flex; align-items: center; gap: 14px; }
-.page-header-icon { width: 46px; height: 46px; border-radius: 12px; background: var(--admin-primary-light); color: var(--admin-primary); display: flex; align-items: center; justify-content: center; font-size: 18px; }
-.page-title { font-size: 18px; font-weight: 700; margin: 0; }
-.page-subtitle { font-size: 13px; color: var(--admin-muted); margin: 2px 0 0; }
-.search-box { position: relative; }
-.search-icon { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--admin-muted); font-size: 13px; }
-.search-input { padding-right: 36px; min-width: 200px; }
-.empty-state { display: flex; flex-direction: column; align-items: center; padding: 48px 24px; color: var(--admin-muted); gap: 10px; }
-.empty-state i { font-size: 36px; opacity: 0.5; }
-.user-avatar { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; border: 2px solid var(--admin-border); }
-.user-avatar-placeholder { width: 38px; height: 38px; border-radius: 50%; background: var(--admin-surface-soft, #f0f0f0); display: inline-flex; align-items: center; justify-content: center; color: var(--admin-muted); font-size: 14px; border: 2px solid var(--admin-border); }
-</style>
+<style scoped src="./styles/UsersView.css"></style>
