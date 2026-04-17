@@ -143,77 +143,107 @@ onMounted(load);
       :stats="shellStats"
     >
       <template #actions>
-        <button class="customer-notify-mark-all" :disabled="bulkLoading || !summary.unread" @click="markAllRead">
-          {{ bulkLoading ? 'در حال بروزرسانی...' : 'خواندن همه' }}
+        <button class="notify-mark-all-btn" :disabled="bulkLoading || !summary.unread" @click="markAllRead">
+          <i :class="bulkLoading ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-check-double'"></i>
+          {{ bulkLoading ? 'بروزرسانی...' : 'خواندن همه' }}
         </button>
       </template>
 
-    <section class="customer-notify-summary">
-      <article class="customer-notify-stat"><span>کل اعلان‌ها</span><strong>{{ summary.total }}</strong></article>
-      <article class="customer-notify-stat tone-warning"><span>خوانده نشده</span><strong>{{ summary.unread }}</strong></article>
-      <article class="customer-notify-stat tone-accent"><span>اطلاع رسانی</span><strong>{{ summary.info }}</strong></article>
-      <article class="customer-notify-stat tone-info"><span>توجه</span><strong>{{ summary.attention }}</strong></article>
-      <article class="customer-notify-stat tone-danger"><span>اخطار</span><strong>{{ summary.warning }}</strong></article>
-    </section>
-
-    <section class="card customer-notify-panel">
-      <div class="customer-notify-filters">
-        <input v-model="filters.search" class="form-control" placeholder="جستجو در عنوان یا متن" @keyup.enter="applyFilters" />
-        <select v-model="filters.category" class="form-select">
-          <option v-for="item in categoryOptions" :key="item.value || 'all'" :value="item.value">{{ item.label }}</option>
-        </select>
-        <select v-model="filters.isRead" class="form-select">
-          <option value="">همه وضعیت‌ها</option>
-          <option value="unread">خوانده نشده</option>
-          <option value="read">خوانده شده</option>
-        </select>
-        <div class="customer-notify-filter-actions">
-          <button class="btn btn-primary" @click="applyFilters">اعمال</button>
-          <button class="btn btn-outline-secondary" @click="clearFilters">پاکسازی</button>
-        </div>
+    <div class="notify-stats-row">
+      <div class="notify-stat-pill">
+        <i class="fa-solid fa-bell"></i>
+        <div><span>کل</span><strong>{{ summary.total }}</strong></div>
       </div>
+      <div class="notify-stat-pill tone-warning">
+        <i class="fa-solid fa-envelope"></i>
+        <div><span>خوانده نشده</span><strong>{{ summary.unread }}</strong></div>
+      </div>
+      <div class="notify-stat-pill tone-info">
+        <i class="fa-solid fa-circle-info"></i>
+        <div><span>اطلاع رسانی</span><strong>{{ summary.info }}</strong></div>
+      </div>
+      <div class="notify-stat-pill tone-attention">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        <div><span>توجه</span><strong>{{ summary.attention }}</strong></div>
+      </div>
+      <div class="notify-stat-pill tone-danger">
+        <i class="fa-solid fa-circle-exclamation"></i>
+        <div><span>اخطار</span><strong>{{ summary.warning }}</strong></div>
+      </div>
+    </div>
 
-      <div v-if="loading" class="customer-notify-empty"><span class="web-spinner"></span> در حال بارگذاری اعلان‌ها...</div>
-      <div v-else-if="!items.length" class="customer-notify-empty">اعلانی برای نمایش وجود ندارد.</div>
+    <div class="notify-toolbar">
+      <div class="notify-search-box">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input v-model="filters.search" type="text" placeholder="جستجو در عنوان یا متن..." @keyup.enter="applyFilters" />
+      </div>
+      <select v-model="filters.category" class="notify-select" @change="applyFilters">
+        <option v-for="item in categoryOptions" :key="item.value || 'all'" :value="item.value">{{ item.label }}</option>
+      </select>
+      <select v-model="filters.isRead" class="notify-select" @change="applyFilters">
+        <option value="">همه وضعیت‌ها</option>
+        <option value="unread">خوانده نشده</option>
+        <option value="read">خوانده شده</option>
+      </select>
+      <button class="notify-clear-btn" @click="clearFilters"><i class="fa-solid fa-rotate-left"></i> پاکسازی</button>
+    </div>
 
-      <div v-else class="customer-notify-list">
-        <article v-for="item in items" :key="item.id" class="customer-notify-card" :class="{ unread: !item.isRead }">
-          <div class="customer-notify-card-head">
-            <div class="customer-notify-card-chips">
-              <span class="category-chip" :style="{ color: item.categoryColor, background: `${item.categoryColor}18` }">{{ item.categoryLabel }}</span>
-              <span class="read-chip" :class="item.isRead ? 'read' : 'unread'">{{ item.isRead ? 'خوانده شده' : 'خوانده نشده' }}</span>
+    <div v-if="loading" class="notify-empty-state">
+      <i class="fa-solid fa-spinner fa-spin"></i>
+      <span>در حال بارگذاری اعلان‌ها...</span>
+    </div>
+    <div v-else-if="!items.length" class="notify-empty-state">
+      <div class="notify-empty-icon"><i class="fa-regular fa-bell-slash"></i></div>
+      <strong>اعلانی یافت نشد</strong>
+      <span>هیچ اعلانی با فیلترهای فعلی وجود ندارد.</span>
+    </div>
+
+    <TransitionGroup v-else name="notify-list" tag="div" class="notify-list">
+      <article v-for="item in items" :key="item.id" class="notify-card" :class="{ unread: !item.isRead }">
+        <div class="notify-card-indicator" :style="{ background: item.categoryColor }"></div>
+        <div class="notify-card-content">
+          <div class="notify-card-top">
+            <div class="notify-card-badges">
+              <span class="notify-cat-badge" :style="{ color: item.categoryColor, background: `${item.categoryColor}14` }">
+                <i :class="item.category === 'warning' ? 'fa-solid fa-circle-exclamation' : item.category === 'attention' ? 'fa-solid fa-triangle-exclamation' : 'fa-solid fa-circle-info'"></i>
+                {{ item.categoryLabel }}
+              </span>
+              <span class="notify-read-badge" :class="item.isRead ? 'is-read' : 'is-unread'">
+                <i :class="item.isRead ? 'fa-solid fa-envelope-open' : 'fa-solid fa-envelope'"></i>
+                {{ item.isRead ? 'خوانده شده' : 'جدید' }}
+              </span>
             </div>
-            <time>{{ formatDate(item.createdAt) }}</time>
+            <time class="notify-card-time"><i class="fa-regular fa-clock"></i> {{ formatDate(item.createdAt) }}</time>
           </div>
-
-          <h2>{{ item.title }}</h2>
-          <p>{{ item.body }}</p>
-
-          <div class="customer-notify-card-foot">
-            <span>فرستنده: {{ item.senderName }}</span>
-            <div class="customer-notify-card-actions">
+          <h3 class="notify-card-title">{{ item.title }}</h3>
+          <p class="notify-card-body">{{ item.body }}</p>
+          <div class="notify-card-footer">
+            <span class="notify-card-sender"><i class="fa-regular fa-user"></i> {{ item.senderName }}</span>
+            <div class="notify-card-actions">
               <button
                 v-if="item.metadata?.detailPath"
-                class="btn btn-sm btn-primary"
+                class="notify-action-btn primary"
                 :disabled="navigateId === item.id"
                 @click="openNotificationTarget(item)"
               >
-                {{ navigateId === item.id ? '...' : 'مشاهده معامله' }}
+                <i :class="navigateId === item.id ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-arrow-up-right-from-square'"></i>
+                مشاهده
               </button>
-              <button v-if="!item.isRead" class="btn btn-sm btn-outline-secondary" :disabled="actionId === item.id || navigateId === item.id" @click="markOneRead(item)">
-                {{ actionId === item.id ? '...' : 'خوانده شد' }}
+              <button v-if="!item.isRead" class="notify-action-btn" :disabled="actionId === item.id || navigateId === item.id" @click="markOneRead(item)">
+                <i :class="actionId === item.id ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-check'"></i>
+                خوانده شد
               </button>
             </div>
           </div>
-        </article>
-      </div>
+        </div>
+      </article>
+    </TransitionGroup>
 
-      <div v-if="pages > 1" class="customer-notify-pagination">
-        <button class="customer-page-btn" :disabled="page <= 1 || loading" @click="changePage(page - 1)">قبلی</button>
-        <span>صفحه {{ page }} از {{ pages }}</span>
-        <button class="customer-page-btn" :disabled="page >= pages || loading" @click="changePage(page + 1)">بعدی</button>
-      </div>
-    </section>
+    <div v-if="pages > 1" class="notify-pagination">
+      <button class="notify-page-btn" :disabled="page <= 1 || loading" @click="changePage(page - 1)"><i class="fa-solid fa-chevron-right"></i> قبلی</button>
+      <span class="notify-page-info">صفحه <strong>{{ page }}</strong> از <strong>{{ pages }}</strong></span>
+      <button class="notify-page-btn" :disabled="page >= pages || loading" @click="changePage(page + 1)">بعدی <i class="fa-solid fa-chevron-left"></i></button>
+    </div>
     </CustomerPanelShell>
   </section>
 </template>

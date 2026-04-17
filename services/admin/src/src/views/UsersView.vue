@@ -1,5 +1,6 @@
 <script setup>
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import AppPagination from '../components/AppPagination.vue';
 import RecipientNotificationsPanel from '../components/RecipientNotificationsPanel.vue';
 import { deleteCustomer, getCustomers, updateCustomerSuspension } from '../services/admin-api.js';
@@ -8,6 +9,7 @@ import { useConfirm } from '../composables/useConfirm.js';
 
 const toast = useAppToast();
 const { confirm } = useConfirm();
+const route = useRoute();
 
 const items = ref([]);
 const loading = ref(false);
@@ -101,7 +103,24 @@ const openNotifications = (item) => {
   window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
 };
 
-onMounted(load);
+watch(
+  () => route.query.search,
+  async (value) => {
+    const normalized = String(value || '').trim();
+    if (normalized === search.value) {
+      return;
+    }
+
+    search.value = normalized;
+    page.value = 1;
+    await load();
+  }
+);
+
+onMounted(async () => {
+  search.value = String(route.query.search || '').trim();
+  await load();
+});
 </script>
 
 <template>

@@ -1,5 +1,6 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { humanizeAmount } from '../utils/amount.js';
 import LoanDiscoveryFilters from '../components/LoanDiscoveryFilters.vue';
 import LoanOfferCard from '../components/LoanOfferCard.vue';
 import enamadImage from '../assets/images/figma-enamad.png';
@@ -203,7 +204,7 @@ watch(mobileFiltersOpen, (value) => {
               </div>
               <div>
                 <span>محدوده مبلغ</span>
-                <strong>{{ formatNumber(spotlightLoan.minAmount / 1000000) }} تا {{ formatNumber(spotlightLoan.maxAmount / 1000000) }} میلیون</strong>
+                <strong>{{ humanizeAmount(spotlightLoan.minAmount) }} تا {{ humanizeAmount(spotlightLoan.maxAmount) }}</strong>
               </div>
               <div>
                 <span>زمان پاسخ‌دهی</span>

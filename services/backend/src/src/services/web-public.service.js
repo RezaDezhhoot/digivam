@@ -372,11 +372,11 @@ export const listPublishedWebFacilities = async (filters = {}) => {
   const where = { status: Facility.STATUSES.PUBLISHED };
 
   if (filters.minAmount) {
-    where.maxAmount = { [Op.gte]: Number(filters.minAmount) };
+    where.minAmount = { [Op.gte]: Number(filters.minAmount) };
   }
 
   if (filters.maxAmount) {
-    where.minAmount = { [Op.lte]: Number(filters.maxAmount) };
+    where.maxAmount = { [Op.lte]: Number(filters.maxAmount) };
   }
 
   const rows = await Facility.findAll({

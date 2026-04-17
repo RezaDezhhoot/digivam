@@ -3,7 +3,8 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import AppPagination from '../components/AppPagination.vue';
 import DealChatModal from '../components/DealChatModal.vue';
-import { getAdminDeal, getAdminDeals, getAdminDealMessages, getAdminDealSummary, getAdminDealUnreadCount, refreshAdminDealContract, removeAdminDealSignature, sendAdminDealMessage, updateAdminDeal } from '../services/admin-api.js';
+import Select2Input from '../components/Select2Input.vue';
+import { getAdminDeal, getAdminDeals, getAdminDealMessages, getAdminDealSummary, getAdminDealUnreadCount, getLoanTypes, refreshAdminDealContract, removeAdminDealSignature, sendAdminDealMessage, updateAdminDeal } from '../services/admin-api.js';
 import { useAppToast } from '../composables/useToast.js';
 import { truncateWords } from '../../../../web/src/src/utils/str.js';
 
@@ -29,7 +30,8 @@ const savingAdminUpdate = ref(false);
 const refreshingContract = ref(false);
 const resultHistoryOpen = ref(false);
 const summary = ref({ total: 0, inProgress: 0, failed: 0, suspended: 0, done: 0, waitingCustomer: 0, waitingBroker: 0, waitingAdmin: 0, verifyBroker: 0 });
-const filters = ref({ status: '', step: '', actBy: '', search: '', adminReviewMode: '' });
+const filters = ref({ status: '', step: '', actBy: '', search: '', adminReviewMode: '', loanTypeId: '' });
+const loanTypeOptions = ref([]);
 
 const selectedId = computed(() => Number(route.params.id || 0) || null);
 
@@ -59,6 +61,13 @@ const actByOptions = [
   { value: 'admin', label: 'منتظر ادمین' },
   { value: 'customer_broker', label: 'مشتری و کارگزار' }
 ];
+
+const loanTypeSelectOptions = computed(() =>
+  loanTypeOptions.value.map((item) => ({
+    id: item.id,
+    label: `${item.title} - ${item.typeLabel}`
+  }))
+);
 
 const summaryCards = computed(() => [
   { label: 'کل معاملات', value: summary.value.total, filters: { status: '', step: '', actBy: '' }, tone: 'neutral' },
@@ -254,7 +263,20 @@ const buildQuery = ({ page: nextPage = page.value, limit: nextLimit = limit.valu
     params.set('adminReviewMode', filters.value.adminReviewMode);
   }
 
+  if (filters.value.loanTypeId) {
+    params.set('loanTypeId', String(filters.value.loanTypeId));
+  }
+
   return `?${params.toString()}`;
+};
+
+const loadLoanTypeOptions = async () => {
+  try {
+    const data = await getLoanTypes('?page=1&limit=500');
+    loanTypeOptions.value = Array.isArray(data.items) ? data.items : [];
+  } catch {
+    loanTypeOptions.value = [];
+  }
 };
 
 const exportDealsToExcel = async () => {
@@ -540,7 +562,7 @@ const applyFilters = async () => {
 };
 
 const clearFilters = async () => {
-  filters.value = { status: '', step: '', actBy: '', search: '', adminReviewMode: '' };
+  filters.value = { status: '', step: '', actBy: '', search: '', adminReviewMode: '', loanTypeId: '' };
   page.value = 1;
   if (selectedId.value) {
     await router.push('/deals');
@@ -594,6 +616,7 @@ watch(chatOpen, (open) => {
 
 onMounted(() => {
   load();
+  loadLoanTypeOptions();
 });
 onUnmounted(stopUnreadPoll);
 </script>
@@ -646,6 +669,14 @@ onUnmounted(stopUnreadPoll);
           <option value="true">فقط در بررسی مدیریت</option>
           <option value="false">خارج از بررسی مدیریت</option>
         </select>
+        <Select2Input
+          v-model="filters.loanTypeId"
+          :options="loanTypeSelectOptions"
+          label-key="label"
+          value-key="id"
+          number
+          placeholder="همه نوع‌های وام"
+        />
         <div class="filter-actions">
           <button class="btn btn-primary" @click="applyFilters">اعمال</button>
           <button class="btn btn-outline-secondary" @click="clearFilters">پاکسازی</button>
@@ -666,7 +697,7 @@ onUnmounted(stopUnreadPoll);
               :key="item.id"
               type="button"
               class="deal-card"
-              :class="{ active: selectedId === item.id, 'act-by-marked': isAdminTurn(item) }"
+              :class="[`deal-tone-${item.status}`, { active: selectedId === item.id, 'act-by-marked': isAdminTurn(item) }]"
               @click="openItem(item.id)"
             >
               <div class="deal-card-head">
@@ -674,12 +705,23 @@ onUnmounted(stopUnreadPoll);
                 <span class="status-pill" :class="`status-pill-${item.status}`">{{ item.statusLabel }}</span>
               </div>
               <h2 class="deal-card-title">{{ item.facility?.title || 'بدون عنوان' }}</h2>
-              <div class="deal-card-meta">{{ item.customer?.name || 'مشتری' }} | {{ item.broker?.name || 'کارگزار' }}</div>
-              <div class="deal-card-meta">{{ item.typeLabel || item.facility?.typeLabel || '-' }}</div>
-              <div class="deal-card-meta">{{ item.stepLabel }} | اقدام: {{ item.actByLabel }}</div>
-              <div v-if="isAdminTurn(item)" class="deal-card-meta"><span class="act-by-mark-chip">نوبت اقدام شما</span></div>
-              <div v-if="item.adminReviewMode" class="deal-card-meta admin-review-note">در بررسی مدیریت: {{ getAdminReviewReason(item) }}</div>
-              <div class="deal-card-meta">{{ formatMoney(item.amount) }} | {{ item.updatedAtLabel }}</div>
+              <div class="deal-card-parties">
+                <span><i class="fa-solid fa-user"></i> {{ item.customer?.name || 'مشتری' }}</span>
+                <span><i class="fa-solid fa-building-columns"></i> {{ item.broker?.name || 'کارگزار' }}</span>
+              </div>
+              <div class="deal-card-tags">
+                <span class="deal-tag">{{ item.typeLabel || item.facility?.typeLabel || '-' }}</span>
+                <span class="deal-tag">{{ item.stepLabel }}</span>
+                <span class="deal-tag">اقدام: {{ item.actByLabel }}</span>
+                <span v-if="isAdminTurn(item)" class="act-by-mark-chip"><i class="fa-solid fa-bolt"></i> نوبت اقدام شما</span>
+              </div>
+              <div v-if="item.adminReviewMode" class="deal-card-review">
+                <i class="fa-solid fa-shield-halved"></i> در بررسی مدیریت: {{ getAdminReviewReason(item) }}
+              </div>
+              <div class="deal-card-bottom">
+                <strong>{{ formatMoney(item.amount) }}</strong>
+                <span>{{ item.updatedAtLabel }}</span>
+              </div>
             </button>
           </div>
 

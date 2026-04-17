@@ -5,6 +5,11 @@ export const getBrokerDealSummary = () =>
     headers: { ...brokerAuthHeaders(), 'Content-Type': 'application/json' }
   });
 
+export const getBrokerConversations = () =>
+  brokerFetchJson(`${API_BASE}/broker/deals/conversations`, {
+    headers: { ...brokerAuthHeaders(), 'Content-Type': 'application/json' }
+  });
+
 export const getBrokerDeals = (query = '') =>
   brokerFetchJson(`${API_BASE}/broker/deals${query}`, {
     headers: { ...brokerAuthHeaders(), 'Content-Type': 'application/json' }

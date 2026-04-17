@@ -81,6 +81,7 @@ export const listBrokerDeals = async (req, res, next) => {
   try {
     const { page, limit } = getPagination(req.query);
     const where = { brokerId: Number(req.auth.sub) };
+    const loanTypeId = Number(req.query.loanTypeId || 0);
 
     if (req.query.status) {
       where.status = req.query.status;
@@ -88,6 +89,10 @@ export const listBrokerDeals = async (req, res, next) => {
 
     if (req.query.step) {
       where.step = req.query.step;
+    }
+
+    if (loanTypeId > 0) {
+      where.subTypeId = loanTypeId;
     }
 
     const result = await listDeals({ where, page, limit });

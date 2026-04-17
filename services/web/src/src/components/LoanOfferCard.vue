@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
+import { humanizeAmount } from '../utils/amount.js';
 import { openCustomerAuthModal, useCustomerSession } from '../composables/useCustomerSession.js';
 import { getBookmarkStatus, toggleBookmark } from '../services/customer-panel.api.js';
 
@@ -146,7 +147,7 @@ watch(
     <div class="loan-spec-grid">
       <div class="loan-spec-item">
         <span>محدوده مبلغ</span>
-        <strong>{{ formatNumber(item.minAmount / 1000000) }} - {{ formatNumber(item.maxAmount / 1000000) }} میلیون</strong>
+        <strong>{{ humanizeAmount(item.minAmount) }} - {{ humanizeAmount(item.maxAmount) }}</strong>
       </div>
       <div class="loan-spec-item">
         <span>نرخ سود پیشنهادی</span>

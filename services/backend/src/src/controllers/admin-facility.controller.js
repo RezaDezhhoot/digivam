@@ -30,6 +30,7 @@ export const listAdminFacilities = async (req, res, next) => {
     const status = normalizeSearch(req.query.status);
     const type = normalizeSearch(req.query.type);
     const brokerId = req.query.brokerId ? Number(req.query.brokerId) : null;
+    const loanTypeId = req.query.loanTypeId ? Number(req.query.loanTypeId) : null;
     const { page, limit, offset } = getPagination(req.query);
     const where = {};
 
@@ -43,6 +44,10 @@ export const listAdminFacilities = async (req, res, next) => {
 
     if (brokerId) {
       where.brokerId = brokerId;
+    }
+
+    if (loanTypeId) {
+      where.subTypeId = loanTypeId;
     }
 
     if (search) {

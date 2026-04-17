@@ -540,16 +540,17 @@ onBeforeUnmount(() => {
           <div class="contract-otp-modal">
             <div class="contract-otp-head">
               <div>
-                <span class="contract-kicker">OTP قرارداد</span>
-                <h4>کد تایید امضای قرارداد</h4>
-                <p>اگر پیامک قبلا ارسال شده باشد، مستقیم همین فرم نمایش داده می‌شود.</p>
+                <span class="contract-kicker">تایید OTP</span>
+                <h4>کد تایید امضای قرارداد را وارد کنید</h4>
+                <p>اگر پیامک قبلا ارسال شده باشد، مستقیم همین فرم را می‌بینید. ارسال مجدد هر ۲ دقیقه فعال می‌شود.</p>
               </div>
               <button type="button" class="contract-otp-close" @click="otpOpen = false">×</button>
             </div>
 
+            <label class="contract-otp-label">کد تایید</label>
             <OtpCodeInput v-model="otpCode" :disabled="busy" :auto-focus="otpOpen" />
 
-            <div class="signature-action-row">
+            <div class="contract-otp-actions">
               <button type="button" class="btn btn-outline-secondary" :disabled="busy || resendIn > 0" @click="resendOtp">
                 {{ resendIn > 0 ? `ارسال مجدد تا ${resendIn} ثانیه` : 'ارسال مجدد کد' }}
               </button>

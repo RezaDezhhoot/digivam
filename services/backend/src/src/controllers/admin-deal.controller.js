@@ -21,6 +21,7 @@ export const listAdminDeals = async (req, res, next) => {
   try {
     const { page, limit } = getPagination(req.query);
     const where = {};
+    const loanTypeId = Number(req.query.loanTypeId || 0);
 
     if (req.query.status) {
       where.status = req.query.status;
@@ -32,6 +33,10 @@ export const listAdminDeals = async (req, res, next) => {
 
     if (req.query.actBy) {
       where.actBy = req.query.actBy;
+    }
+
+    if (loanTypeId > 0) {
+      where.subTypeId = loanTypeId;
     }
 
     if (req.query.adminReviewMode === 'true') {

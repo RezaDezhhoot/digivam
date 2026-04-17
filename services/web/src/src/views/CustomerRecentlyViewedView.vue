@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 import CustomerPanelShell from '../components/CustomerPanelShell.vue';
+import { humanizeAmount } from '../utils/amount.js';
 import { getMyRecentlyViewed } from '../services/customer-panel.api.js';
 
 const loading = ref(true);
@@ -71,7 +72,7 @@ onMounted(load);
 
           <div class="rv-card-range">
             <span>محدوده مبلغ</span>
-            <strong>{{ formatNumber(rv.minAmount / 1000000) }} تا {{ formatNumber(rv.maxAmount / 1000000) }} میلیون تومان</strong>
+            <strong>{{ humanizeAmount(rv.minAmount) }} تا {{ humanizeAmount(rv.maxAmount) }} تومان</strong>
           </div>
 
           <div class="rv-card-meta-grid">

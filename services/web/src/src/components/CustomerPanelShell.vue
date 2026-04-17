@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useCustomerSession } from '../composables/useCustomerSession.js';
 import { useSiteConfig } from '../composables/useSiteConfig.js';
 import { ACCOUNT_SUSPENDED_EVENT } from '../services/customer-auth.api.js';
-import { getCustomerDealSummary } from '../services/customer-panel.api.js';
+import { getCustomerConversations, getCustomerDealSummary } from '../services/customer-panel.api.js';
 import logoFallback from '../assets/images/figma-logo.png';
 
 const props = defineProps({
@@ -32,12 +32,14 @@ const { profile, isSuspended, unreadNotifications, updateProfile } = useCustomer
 const { siteLogoUrl } = useSiteConfig();
 const activeLogo = computed(() => siteLogoUrl.value || logoFallback);
 const dealSummary = ref({ waitingCustomer: 0 });
+const conversationSummary = ref({ totalUnreadCount: 0 });
 const isCompactSidebar = ref(false);
 const isMobileNavOpen = ref(false);
 
 const navItems = [
   { to: '/customer/dashboard', label: 'داشبورد', icon: 'fa-solid fa-house', name: 'customer-dashboard', activeNames: ['customer-dashboard'], mobileHidden: true },
   { to: '/customer/deals', label: 'معامله‌ها', icon: 'fa-solid fa-handshake', name: 'customer-deals', activeNames: ['customer-deals', 'customer-deal-start', 'customer-deal-detail'], badge: 'deals' },
+  { to: '/customer/conversations', label: 'گفتگوها', icon: 'fa-solid fa-comments', name: 'customer-conversations', activeNames: ['customer-conversations'], badge: 'conversations' },
   { to: '/customer/profile', label: 'پروفایل', icon: 'fa-solid fa-id-card', name: 'customer-profile' },
   { to: '/customer/notifications', label: 'اعلان‌ها', icon: 'fa-solid fa-bell', name: 'customer-notifications', badge: 'notifications' },
   { to: '/customer/validations', label: 'اعتبارسنجی‌ها', icon: 'fa-solid fa-clipboard-check', name: 'customer-validations' },
@@ -53,6 +55,7 @@ const profileStatusText = computed(() => (profile.value?.profile ? 'پروفای
 const profileStatusClass = computed(() => (profile.value?.profile ? 'done' : 'pending'));
 const unreadText = computed(() => new Intl.NumberFormat('fa-IR').format(Number(unreadNotifications.value || 0)));
 const dealAwaitingText = computed(() => new Intl.NumberFormat('fa-IR').format(Number(dealSummary.value.waitingCustomer || 0)));
+const conversationUnreadText = computed(() => new Intl.NumberFormat('fa-IR').format(Number(conversationSummary.value.totalUnreadCount || 0)));
 const normalizedStats = computed(() => (Array.isArray(props.stats) ? props.stats.filter(Boolean).slice(0, 4) : []));
 const isNavExpanded = computed(() => !isCompactSidebar.value || isMobileNavOpen.value);
 const suspensionReason = computed(() => profile.value?.suspendReason || 'حساب شما توسط ادمین معلق شده است. تنها بخش پشتیبانی در دسترس است.');
@@ -83,14 +86,19 @@ const toggleMobileNav = () => {
 const loadDealSummary = async () => {
   if (isSuspended.value) {
     dealSummary.value = { waitingCustomer: 0 };
+    conversationSummary.value = { totalUnreadCount: 0 };
     return;
   }
 
   try {
-    const data = await getCustomerDealSummary();
-    dealSummary.value = data.summary || dealSummary.value;
+    const [dealData, conversationData] = await Promise.all([getCustomerDealSummary(), getCustomerConversations()]);
+    dealSummary.value = dealData.summary || dealSummary.value;
+    conversationSummary.value = {
+      totalUnreadCount: Number(conversationData.totalUnreadCount || 0)
+    };
   } catch {
     dealSummary.value = { waitingCustomer: 0 };
+    conversationSummary.value = { totalUnreadCount: 0 };
   }
 };
 
@@ -188,6 +196,7 @@ onBeforeUnmount(() => {
             <span>{{ item.label }}</span>
             <span v-if="item.badge === 'notifications' && unreadNotifications" class="customer-shell-nav-badge">{{ unreadText }}</span>
             <span v-if="item.badge === 'deals' && dealSummary.waitingCustomer" class="customer-shell-nav-badge">{{ dealAwaitingText }}</span>
+            <span v-if="item.badge === 'conversations' && conversationSummary.totalUnreadCount" class="customer-shell-nav-badge">{{ conversationUnreadText }}</span>
           </RouterLink>
         </nav>
 

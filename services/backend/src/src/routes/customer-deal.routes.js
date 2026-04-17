@@ -19,6 +19,7 @@ import {
   verifyDealCashPayment
 } from '../controllers/customer-deal-payment.controller.js';
 import {
+  getCustomerConversations,
   getCustomerDealMessages,
   sendCustomerDealMessage,
   getCustomerUnreadCount
@@ -41,6 +42,7 @@ export const customerDealRouter = Router();
 
 customerDealRouter.use(requireAuth('customer'));
 
+customerDealRouter.get('/conversations', getCustomerConversations);
 customerDealRouter.get('/summary', getCustomerDealSummary);
 customerDealRouter.get('/', listCustomerDeals);
 customerDealRouter.get('/:id', dealIdValidator, validateRequest, getCustomerDeal);

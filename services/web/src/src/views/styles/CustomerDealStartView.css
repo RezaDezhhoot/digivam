@@ -55,6 +55,12 @@
   grid-template-columns: auto 1fr;
   gap: 18px;
   align-items: center;
+  padding: 20px 22px;
+  border: 1px solid rgba(14, 116, 144, 0.16);
+  background:
+    linear-gradient(180deg, rgba(236, 254, 255, 0.92), rgba(255, 255, 255, 0.96)),
+    radial-gradient(circle at top right, rgba(14, 165, 233, 0.12), transparent 38%);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.06);
 }
 
 .deal-wait-icon {
@@ -65,8 +71,61 @@
   align-items: center;
   justify-content: center;
   font-size: 28px;
-  color: var(--web-primary);
-  background: rgba(219, 39, 119, 0.08);
+  color: #0f766e;
+  background: linear-gradient(180deg, rgba(14, 165, 233, 0.12), rgba(16, 185, 129, 0.14));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.deal-wait-copy {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.deal-wait-copy h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 900;
+  color: var(--web-text);
+}
+
+.deal-wait-copy p {
+  margin: 0;
+  color: var(--web-muted);
+  line-height: 1.95;
+}
+
+.deal-wait-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(14, 116, 144, 0.12);
+  color: #0f766e;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.deal-wait-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.15rem;
+}
+
+.deal-wait-meta span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.76);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .deal-feedback-headline {
@@ -706,7 +765,7 @@
 .deal-validation-grid,
 .deal-documents-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
   overflow-wrap: anywhere;
 }
@@ -1427,19 +1486,22 @@
   align-items: center;
   justify-content: center;
   padding: 18px;
-  background: rgba(15, 23, 42, 0.5);
-  backdrop-filter: blur(10px);
+  background: rgba(15, 23, 42, 0.48);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 
 .transfer-otp-modal {
   width: min(100%, 460px);
   display: grid;
-  gap: 14px;
-  padding: 20px;
+  gap: 16px;
+  padding: 24px;
   border-radius: 28px;
   background: var(--web-surface-soft);
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.18);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  box-shadow:
+    0 8px 40px rgba(15, 23, 42, 0.15),
+    0 2px 8px rgba(15, 23, 42, 0.06);
 }
 
 .transfer-otp-head {
@@ -1476,19 +1538,24 @@
 }
 
 .transfer-otp-close {
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
   border-radius: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  background: rgba(248, 250, 252, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(248, 250, 252, 0.9);
   color: #0f172a;
   font-size: 22px;
   line-height: 1;
   cursor: pointer;
+  transition: background 0.15s;
+}
+
+.transfer-otp-close:hover {
+  background: rgba(241, 245, 249, 1);
 }
 
 .transfer-otp-label {
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 900;
   color: var(--web-text);
 }
@@ -1507,12 +1574,21 @@
 
 .transfer-otp-actions {
   display: flex;
-  align-items: flex-start;
+  align-items: flex-end;
   justify-content: space-between;
   gap: 12px;
 }
 
+.transfer-otp-actions > * {
+  flex: 1 1 0;
+}
+
 @media (max-width: 767px) {
+  .deal-wait-stage {
+    grid-template-columns: 1fr;
+    padding: 18px;
+  }
+
   .transfer-otp-overlay {
     align-items: flex-end;
     padding: 0;

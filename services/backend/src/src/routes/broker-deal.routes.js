@@ -9,6 +9,7 @@ import {
   submitBrokerDealTransfer
 } from '../controllers/broker-deal.controller.js';
 import {
+  getBrokerConversations,
   getBrokerDealMessages,
   sendBrokerDealMessage,
   getBrokerUnreadCount
@@ -28,6 +29,7 @@ export const brokerDealRouter = Router();
 
 brokerDealRouter.use(requireAuth('broker'));
 
+brokerDealRouter.get('/conversations', getBrokerConversations);
 brokerDealRouter.get('/summary', getBrokerDealSummary);
 brokerDealRouter.get('/', listBrokerDeals);
 brokerDealRouter.get('/:id', brokerDealIdValidator, validateRequest, getBrokerDeal);

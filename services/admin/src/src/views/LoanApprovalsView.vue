@@ -1,5 +1,6 @@
 <script setup>
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import AppPagination from '../components/AppPagination.vue';
 import RecipientNotificationsPanel from '../components/RecipientNotificationsPanel.vue';
 import { deleteBroker, getBrokers, updateBrokerLevel, updateBrokerSuspension, adminBrokerWalletDeposit, adminBrokerWalletWithdraw } from '../services/admin-api.js';
@@ -9,6 +10,7 @@ import { extractRawAmountInput, formatAmountInWords, formatAmountInputDisplay } 
 
 const toast = useAppToast();
 const { confirm } = useConfirm();
+const route = useRoute();
 
 const items = ref([]);
 const loading = ref(false);
@@ -155,7 +157,24 @@ const levelBadge = (level) => {
   return map[level] || map[1];
 };
 
-onMounted(load);
+watch(
+  () => route.query.search,
+  async (value) => {
+    const normalized = String(value || '').trim();
+    if (normalized === search.value) {
+      return;
+    }
+
+    search.value = normalized;
+    page.value = 1;
+    await load();
+  }
+);
+
+onMounted(async () => {
+  search.value = String(route.query.search || '').trim();
+  await load();
+});
 </script>
 
 <template>

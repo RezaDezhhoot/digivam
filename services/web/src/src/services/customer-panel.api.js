@@ -135,6 +135,11 @@ export const getCustomerDealSummary = () =>
     headers: { ...customerAuthHeaders(), 'Content-Type': 'application/json' }
   });
 
+export const getCustomerConversations = () =>
+  fetchJson(`${API_BASE}/customer/deals/conversations`, {
+    headers: { ...customerAuthHeaders(), 'Content-Type': 'application/json' }
+  });
+
 export const getCustomerDeals = (query = '') =>
   fetchJson(`${API_BASE}/customer/deals${buildQueryString(query)}`, {
     headers: { ...customerAuthHeaders(), 'Content-Type': 'application/json' }

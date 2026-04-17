@@ -122,3 +122,13 @@ export const isAmountLikeField = (item) => {
 
   return /مبلغ|هزینه|قیمت|اعتبار|تومان|ریال/.test(haystack);
 };
+
+export const humanizeAmount = (value) => {
+  const num = Number(value || 0);
+  if (!num || !Number.isFinite(num)) return '۰';
+  const fmt = (v) => new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 1 }).format(v);
+  if (num >= 1_000_000_000) return `${fmt(num / 1_000_000_000)} میلیارد`;
+  if (num >= 1_000_000) return `${fmt(num / 1_000_000)} میلیون`;
+  if (num >= 1_000) return `${fmt(num / 1_000)} هزار`;
+  return fmt(num);
+};

@@ -37,6 +37,11 @@ const routes = [
         component: BrokerDealsView
       },
       {
+        path: 'conversations/:dealId?',
+        name: 'broker-conversations',
+        component: () => import('../views/BrokerConversationsView.vue')
+      },
+      {
         path: 'notifications',
         name: 'broker-notifications',
         component: BrokerNotificationsView

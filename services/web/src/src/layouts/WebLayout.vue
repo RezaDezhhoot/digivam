@@ -6,7 +6,7 @@ import logoImage from '../assets/images/figma-logo.png';
 import { useCustomerSession } from '../composables/useCustomerSession.js';
 import { useSiteConfig } from '../composables/useSiteConfig.js';
 import { useWebTheme } from '../composables/useWebTheme.js';
-import { getCustomerDealSummary } from '../services/customer-panel.api.js';
+import { getCustomerConversations, getCustomerDealSummary } from '../services/customer-panel.api.js';
 import { getCustomerNotificationSummary } from '../services/customer-notification.api.js';
 import { getCustomerProfile } from '../services/customer-profile.api.js';
 
@@ -24,6 +24,7 @@ const authModalOpen = ref(false);
 const authRedirectTo = ref('/customer/dashboard');
 const showBackTop = ref(false);
 const customerDealSummary = ref({ waitingCustomer: 0 });
+const conversationUnreadTotal = ref(0);
 
 const primaryNavItems = [
   { label: 'صفحه اصلی', to: '/', name: 'home', icon: 'fa-solid fa-house' },
@@ -37,6 +38,7 @@ const secondaryItems = computed(() => [
   { label: 'داشبورد مشتری', to: '/customer/dashboard', requiresAuth: true, icon: 'fa-solid fa-gauge-high' },
   { label: 'پروفایل', to: '/customer/profile', requiresAuth: true, icon: 'fa-solid fa-id-card' },
   { label: 'اعلان‌ها', to: '/customer/notifications', requiresAuth: true, showBadge: true, icon: 'fa-solid fa-bell' },
+  { label: 'گفتگوها', to: '/customer/conversations', requiresAuth: true, showConversationBadge: true, icon: 'fa-solid fa-comments' },
   { label: 'نشان‌شده‌ها', to: '/customer/bookmarks', requiresAuth: true, icon: 'fa-solid fa-bookmark' },
   { label: 'بازدیدهای اخیر', to: '/customer/recently-viewed', requiresAuth: true, icon: 'fa-solid fa-clock-rotate-left' },
   { label: 'آموزشگاه', to: '/customer/academy', requiresAuth: true, icon: 'fa-solid fa-graduation-cap' }
@@ -58,11 +60,16 @@ const customerPhone = computed(() => profile.value?.phone || '');
 const customerInitial = computed(() => String(profile.value?.name || 'م').trim().charAt(0) || 'م');
 const customerAvatar = computed(() => profile.value?.avatar || '');
 const unreadText = computed(() => (unreadNotifications.value > 99 ? '99+' : new Intl.NumberFormat('fa-IR').format(unreadNotifications.value)));
+const conversationUnreadText = computed(() => (conversationUnreadTotal.value > 99 ? '99+' : new Intl.NumberFormat('fa-IR').format(conversationUnreadTotal.value)));
 const waitingDealsCount = computed(() => Number(customerDealSummary.value.waitingCustomer || 0));
 const waitingDealsText = computed(() => new Intl.NumberFormat('fa-IR').format(waitingDealsCount.value));
 const floatingDealsSubtitle = computed(() => (waitingDealsCount.value ? `${waitingDealsText.value} معامله نیازمند اقدام` : 'بدون اقدام معلق'));
 const isCustomerPanelRoute = computed(() => route.path.startsWith('/customer/'));
-const pageTransitionKey = computed(() => (isCustomerPanelRoute.value ? route.path : `${route.path}?${new URLSearchParams(route.query).toString()}`));
+const isConversationsRoute = computed(() => route.name === 'customer-conversations');
+const pageTransitionKey = computed(() => {
+  if (isConversationsRoute.value) return '/customer/conversations';
+  return isCustomerPanelRoute.value ? route.path : `${route.path}?${new URLSearchParams(route.query).toString()}`;
+});
 
 const syncScrollState = () => {
   showBackTop.value = window.scrollY > 280;
@@ -153,13 +160,15 @@ const loadCustomerContext = async () => {
   if (!isAuthenticated.value) {
     syncNotificationSummary();
     customerDealSummary.value = { waitingCustomer: 0 };
+    conversationUnreadTotal.value = 0;
     return;
   }
 
-  const [profileResult, notificationsResult, dealSummaryResult] = await Promise.allSettled([
+  const [profileResult, notificationsResult, dealSummaryResult, conversationResult] = await Promise.allSettled([
     getCustomerProfile(),
     getCustomerNotificationSummary(),
-    getCustomerDealSummary()
+    getCustomerDealSummary(),
+    getCustomerConversations()
   ]);
 
   if (profileResult.status === 'fulfilled') {
@@ -176,6 +185,10 @@ const loadCustomerContext = async () => {
   if (dealSummaryResult.status === 'fulfilled') {
     customerDealSummary.value = dealSummaryResult.value.summary || customerDealSummary.value;
   }
+
+  if (conversationResult.status === 'fulfilled') {
+    conversationUnreadTotal.value = Number(conversationResult.value.totalUnreadCount || 0);
+  }
 };
 
 const handleOpenAuthEvent = (event) => {
@@ -185,6 +198,7 @@ const handleOpenAuthEvent = (event) => {
 const handleCustomerDealUpdated = () => {
   if (!isAuthenticated.value) {
     customerDealSummary.value = { waitingCustomer: 0 };
+    conversationUnreadTotal.value = 0;
     return;
   }
 
@@ -194,6 +208,14 @@ const handleCustomerDealUpdated = () => {
     })
     .catch(() => {
       customerDealSummary.value = { waitingCustomer: 0 };
+    });
+
+  getCustomerConversations()
+    .then((data) => {
+      conversationUnreadTotal.value = Number(data.totalUnreadCount || 0);
+    })
+    .catch(() => {
+      conversationUnreadTotal.value = 0;
     });
 };
 
@@ -291,6 +313,10 @@ onUnmounted(() => {
                   <span>اعلان‌ها</span>
                   <span v-if="unreadNotifications" class="desktop-menu-badge">{{ unreadText }}</span>
                 </button>
+                <button type="button" class="desktop-menu-link" @click="navigateSecondaryItem({ to: '/customer/conversations', requiresAuth: true })">
+                  <span>گفتگوها</span>
+                  <span v-if="conversationUnreadTotal" class="desktop-menu-badge">{{ conversationUnreadText }}</span>
+                </button>
                 <button type="button" class="desktop-menu-link danger" @click="logout">خروج</button>
               </div>
             </transition>
@@ -335,6 +361,7 @@ onUnmounted(() => {
                 <span>{{ item.label }}</span>
               </span>
               <span v-if="item.showBadge && unreadNotifications" class="mobile-link-badge">{{ unreadText }}</span>
+              <span v-if="item.showConversationBadge && conversationUnreadTotal" class="mobile-link-badge">{{ conversationUnreadText }}</span>
             </button>
 
             <button v-if="!isAuthenticated" type="button" class="auth-button auth-button-mobile" @click="openAuthModal()">ورود / عضویت</button>

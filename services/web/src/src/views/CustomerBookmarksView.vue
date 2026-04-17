@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 import CustomerPanelShell from '../components/CustomerPanelShell.vue';
+import { humanizeAmount } from '../utils/amount.js';
 import { getMyBookmarks, toggleBookmark } from '../services/customer-panel.api.js';
 
 const loading = ref(true);
@@ -104,7 +105,7 @@ onMounted(load);
 
           <div class="bookmark-card-range">
             <span class="bookmark-card-range-label">محدوده مبلغ</span>
-            <strong>{{ formatNumber(bm.minAmount / 1000000) }} تا {{ formatNumber(bm.maxAmount / 1000000) }} میلیون تومان</strong>
+            <strong>{{ humanizeAmount(bm.minAmount) }} تا {{ humanizeAmount(bm.maxAmount) }} تومان</strong>
           </div>
 
           <div class="bookmark-card-meta-grid">

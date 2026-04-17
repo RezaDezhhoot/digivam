@@ -48,6 +48,7 @@ import {
   updateAdminDeal
 } from '../controllers/admin-deal.controller.js';
 import {
+  getAdminConversations,
   getAdminDealMessages,
   sendAdminDealMessage,
   getAdminUnreadCount
@@ -122,6 +123,7 @@ adminPanelRouter.use(requireAuth('admin'));
 
 adminPanelRouter.get('/summary', getAdminSummary);
 adminPanelRouter.get('/deals/summary', getAdminDealSummary);
+adminPanelRouter.get('/deals/conversations', getAdminConversations);
 adminPanelRouter.get('/deals/analytics', (req, res, next) => {
   const period = String(req.query.period || 'daily').toLowerCase();
   if (!['daily', 'weekly', 'monthly', 'yearly'].includes(period)) {

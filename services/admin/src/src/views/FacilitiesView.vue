@@ -31,6 +31,7 @@ const search = ref('');
 const statusFilter = ref('');
 const brokerFilter = ref('');
 const typeFilter = ref('');
+const loanTypeFilter = ref('');
 const profitInput = ref('');
 const installmentInput = ref('');
 const reviewReason = ref('');
@@ -103,6 +104,13 @@ const brokerSelectOptions = computed(() =>
   }))
 );
 
+const loanTypeSelectOptions = computed(() =>
+  (options.value.loanTypes || []).map((item) => ({
+    id: item.id,
+    label: `${item.title} - ${item.typeLabel}`
+  }))
+);
+
 const selectedLoanType = computed(() =>
   options.value.loanTypes.find((item) => Number(item.id) === Number(form.value.subTypeId)) || null
 );
@@ -145,6 +153,7 @@ const buildQuery = ({ page: nextPage = page.value, limit: nextLimit = limit.valu
   if (statusFilter.value) params.set('status', statusFilter.value);
   if (brokerFilter.value) params.set('brokerId', String(brokerFilter.value));
   if (typeFilter.value) params.set('type', typeFilter.value);
+  if (loanTypeFilter.value) params.set('loanTypeId', String(loanTypeFilter.value));
 
   return `?${params.toString()}`;
 };
@@ -240,6 +249,7 @@ const clearFilters = async () => {
   statusFilter.value = '';
   brokerFilter.value = '';
   typeFilter.value = '';
+  loanTypeFilter.value = '';
   page.value = 1;
   await load();
 };
@@ -530,10 +540,14 @@ onMounted(async () => {
           </div>
           <div class="col-12 col-xl-4">
             <label class="form-label form-label-required">نوع وام</label>
-            <select v-model="form.subTypeId" class="form-select">
-              <option value="">انتخاب نوع وام</option>
-              <option v-for="loanType in options.loanTypes" :key="loanType.id" :value="loanType.id">{{ loanType.title }} - {{ loanType.typeLabel }}</option>
-            </select>
+            <Select2Input
+              v-model="form.subTypeId"
+              :options="loanTypeSelectOptions"
+              label-key="label"
+              value-key="id"
+              number
+              placeholder="انتخاب نوع وام"
+            />
           </div>
 
           <div class="col-12 col-md-6 col-xl-3">
@@ -898,6 +912,14 @@ onMounted(async () => {
           value-key="id"
           number
           placeholder="همه کارگزاران"
+        />
+        <Select2Input
+          v-model="loanTypeFilter"
+          :options="loanTypeSelectOptions"
+          label-key="label"
+          value-key="id"
+          number
+          placeholder="همه نوع‌های وام"
         />
         <button class="btn btn-outline-secondary" @click="clearFilters">
           <i class="fa-solid fa-rotate-left me-1"></i> پاکسازی

@@ -5,6 +5,7 @@ import { openCustomerAuthModal, useCustomerSession } from '../composables/useCus
 import { getWebFacilityBySlug } from '../services/web-loan.api.js';
 import { getValidationStatus, submitSelfValidation, toggleBookmark, getBookmarkStatus } from '../services/customer-panel.api.js';
 import { applySeo, resetSeo } from '../utils/seo.js';
+import { humanizeAmount } from '../utils/amount.js';
 import { useSiteConfig } from '../composables/useSiteConfig.js';
 
 const route = useRoute();
@@ -140,12 +141,14 @@ const calculatePreview = ({ amount, months, rate, digiVamFeeText }) => {
     ? Number(String(digiVamFeeText).replace(/[^\d]/g, '')) || 0
     : 0;
   const totalInterest = Math.round(principal * (percent / 100));
-  const monthlyPayment = installmentMonths > 0 ? Math.round((principal + totalInterest) / installmentMonths) : 0;
+  const totalRepayment = principal + totalInterest;
+  const monthlyPayment = installmentMonths > 0 ? Math.round(totalRepayment / installmentMonths) : 0;
   const netAmount = Math.max(principal - digiFeeValue, 0);
 
   return {
     monthlyPayment,
     totalInterest,
+    totalRepayment,
     netAmount
   };
 };
@@ -468,7 +471,7 @@ onUnmounted(resetSeo);
             <div class="detail-overview-grid">
               <div class="detail-overview-pill">
                 <span>محدوده مبلغ</span>
-                <strong>{{ formatNumber(item.minAmount / 1000000) }} تا {{ formatNumber(item.maxAmount / 1000000) }} میلیون</strong>
+                <strong>{{ humanizeAmount(item.minAmount) }} تا {{ humanizeAmount(item.maxAmount) }}</strong>
               </div>
               <div class="detail-overview-pill">
                 <span>میانگین بررسی</span>
@@ -488,12 +491,8 @@ onUnmounted(resetSeo);
               <strong>{{ formatMoney(calculatorPreview.totalInterest) }}</strong>
             </div>
             <div class="calculator-row">
-              <span>کارمزد کارگزار :</span>
-              <strong>{{ item.brokerFeeText }}</strong>
-            </div>
-            <div class="calculator-row">
-              <span>کارمزد دیجی وام :</span>
-              <strong>{{ item.digiVamFeeText }}</strong>
+              <span>جمع بازپرداخت :</span>
+              <strong>{{ formatMoney(calculatorPreview.totalRepayment) }}</strong>
             </div>
             <div class="calculator-row highlight">
               <span>خالص دریافتی :</span>
@@ -542,7 +541,7 @@ onUnmounted(resetSeo);
                   :class="{ active: selectedAmount === amount }"
                   @click="selectedAmount = amount"
                 >
-                  {{ formatNumber(amount / 1000000) }} میلیون
+                  {{ humanizeAmount(amount) }}
                 </button>
               </div>
             </div>

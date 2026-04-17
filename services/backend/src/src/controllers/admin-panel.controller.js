@@ -337,6 +337,7 @@ export const listBrokers = async (req, res, next) => {
     const { page, limit, offset } = getPagination(req.query);
     const verifyLevel = req.query.verifyLevel ? Number(req.query.verifyLevel) : null;
     const search = normalizeSearch(req.query.search);
+    const searchId = Number(search);
 
     const where = {};
 
@@ -346,6 +347,7 @@ export const listBrokers = async (req, res, next) => {
 
     if (search) {
       where[Op.or] = [
+        ...(Number.isInteger(searchId) && searchId > 0 ? [{ id: searchId }] : []),
         { name: { [Op.like]: `%${search}%` } },
         { phone: { [Op.like]: `%${search}%` } },
         { nationalCode: { [Op.like]: `%${search}%` } }
@@ -439,11 +441,13 @@ export const listCustomers = async (req, res, next) => {
   try {
     const { page, limit, offset } = getPagination(req.query);
     const search = normalizeSearch(req.query.search);
+    const searchId = Number(search);
 
     const where = {};
 
     if (search) {
       where[Op.or] = [
+        ...(Number.isInteger(searchId) && searchId > 0 ? [{ id: searchId }] : []),
         { name: { [Op.like]: `%${search}%` } },
         { phone: { [Op.like]: `%${search}%` } },
         { nationalCode: { [Op.like]: `%${search}%` } }
@@ -520,10 +524,12 @@ export const listAdmins = async (req, res, next) => {
   try {
     const { page, limit, offset } = getPagination(req.query);
     const search = normalizeSearch(req.query.search);
+    const searchId = Number(search);
     const where = { role: 'admin' };
 
     if (search) {
       where[Op.or] = [
+        ...(Number.isInteger(searchId) && searchId > 0 ? [{ id: searchId }] : []),
         { name: { [Op.like]: `%${search}%` } },
         { phone: { [Op.like]: `%${search}%` } },
         { email: { [Op.like]: `%${search}%` } }

@@ -44,6 +44,11 @@ export const getAdminDealSummary = () =>
     headers: authHeaders()
   });
 
+export const getAdminConversations = () =>
+  fetchJson(`${API_BASE}/admin/panel/deals/conversations`, {
+    headers: authHeaders()
+  });
+
 export const getAdminDeals = (query = '') =>
   fetchJson(`${API_BASE}/admin/panel/deals${query}`, {
     headers: authHeaders()

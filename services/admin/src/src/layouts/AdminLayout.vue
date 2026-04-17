@@ -1,8 +1,8 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useTheme } from '../composables/useTheme.js';
-import { getSummary } from '../services/admin-api.js';
+import { getAdminConversations, getSummary } from '../services/admin-api.js';
 
 const router = useRouter();
 const route = useRoute();
@@ -12,6 +12,8 @@ const pendingFacilityCount = ref(0);
 const pendingDealCount = ref(0);
 const pendingCuctomerValidations = ref(0);
 const pendingWithdrawals = ref(0);
+const conversationUnreadTotal = ref(0);
+let conversationPollTimer = null;
 
 const loadPendingCount = async () => {
   try {
@@ -30,9 +32,19 @@ const loadPendingCount = async () => {
 
 onMounted(loadPendingCount);
 
+const loadConversationUnreadTotal = async () => {
+  try {
+    const data = await getAdminConversations();
+    conversationUnreadTotal.value = Number(data.totalUnreadCount || 0);
+  } catch {
+    conversationUnreadTotal.value = 0;
+  }
+};
+
 const navItems = [
   { to: '/', name: 'dashboard', icon: 'fa-solid fa-gauge-high', label: 'داشبورد' },
   { to: '/deals', relatedLinks: ['deal-detail'] ,name: 'deals', icon: 'fa-solid fa-briefcase', label: 'معاملات' },
+  { to: '/conversations', relatedLinks: ['admin-conversations'], name: 'admin-conversations', icon: 'fa-solid fa-comments', label: 'گفتگوها' },
   { to: '/brokers', name: 'brokers', icon: 'fa-solid fa-user-tie', label: 'کارگزاران' },
   { to: '/customers', name: 'customers', icon: 'fa-solid fa-users', label: 'مشتریان' },
   { to: '/settings', name: 'settings', icon: 'fa-solid fa-gear', label: 'تنظیمات پایه' },
@@ -55,6 +67,7 @@ const pageTitle = computed(() => {
     dashboard: 'داشبورد مدیریت',
     deals: 'مدیریت معاملات',
     'deal-detail': 'جزئیات معامله',
+    'admin-conversations': 'گفتگوهای معاملات',
     brokers: 'مدیریت کارگزاران',
     customers: 'مدیریت مشتریان',
     admins: 'مدیریت ادمین ها',
@@ -72,6 +85,18 @@ const pageTitle = computed(() => {
     tutorials: 'مدیریت آموزش ها'
   };
   return titles[route.name] || 'پنل مدیریت';
+});
+
+onMounted(() => {
+  loadConversationUnreadTotal();
+  conversationPollTimer = setInterval(loadConversationUnreadTotal, 30000);
+});
+
+onBeforeUnmount(() => {
+  if (conversationPollTimer) {
+    clearInterval(conversationPollTimer);
+    conversationPollTimer = null;
+  }
 });
 
 const breadcrumbs = computed(() => {
@@ -123,6 +148,7 @@ const closeSidebar = () => { sidebarOpen.value = false; };
           <span>{{ item.label }}</span>
           <span v-if="item.name === 'facilities' && pendingFacilityCount > 0" class="nav-badge">{{ pendingFacilityCount }}</span>
           <span v-if="item.name === 'deals' && pendingDealCount > 0" class="nav-badge">{{ pendingDealCount }}</span>
+          <span v-if="item.name === 'admin-conversations' && conversationUnreadTotal > 0" class="nav-badge">{{ conversationUnreadTotal }}</span>
           <span v-if="item.name === 'customer-validations' && pendingCuctomerValidations > 0" class="nav-badge">{{ pendingCuctomerValidations }}</span>
           <span v-if="item.name === 'withdrawals' && pendingWithdrawals > 0" class="nav-badge">{{ pendingWithdrawals }}</span>
 

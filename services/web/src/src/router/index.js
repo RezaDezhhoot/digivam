@@ -27,6 +27,7 @@ const routes = [
       { path: 'requests', name: 'requests', component: RequestsView },
       { path: 'customer/dashboard', name: 'customer-dashboard', component: CustomerDashboardView, meta: { requiresCustomer: true, requiresProfile: true } },
       { path: 'customer/deals', name: 'customer-deals', component: CustomerDealsView, meta: { requiresCustomer: true, requiresProfile: true } },
+      { path: 'customer/conversations/:dealId?', name: 'customer-conversations', component: () => import('../views/CustomerConversationsView.vue'), meta: { requiresCustomer: true, requiresProfile: true } },
       { path: 'customer/deals/start/:slug', name: 'customer-deal-start', component: CustomerDealStartView, meta: { requiresCustomer: true, requiresProfile: true } },
       { path: 'customer/deals/:id', name: 'customer-deal-detail', component: CustomerDealStartView, meta: { requiresCustomer: true, requiresProfile: true } },
       { path: 'customer/profile', name: 'customer-profile', component: CustomerProfileView, meta: { requiresCustomer: true } },

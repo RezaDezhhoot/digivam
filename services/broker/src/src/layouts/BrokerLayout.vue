@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { getBrokerDealSummary } from '../services/broker-deal.api.js';
+import { getBrokerConversations, getBrokerDealSummary } from '../services/broker-deal.api.js';
 import {
   getBrokerNotificationSummary,
   markAllBrokerNotificationsRead,
@@ -23,12 +23,14 @@ const notificationActionId = ref(null);
 const notificationSummary = ref({ total: 0, unread: 0, read: 0, info: 0, attention: 0, warning: 0 });
 const dealSummary = ref({ total: 0, inProgress: 0, failed: 0, suspended: 0, done: 0, waitingCustomer: 0, waitingBroker: 0, waitingAdmin: 0, verifyBroker: 0 });
 const latestNotifications = ref([]);
+const conversationUnreadTotal = ref(0);
 const isSuspended = computed(() => Boolean(profile.value?.isSuspended));
 const suspensionReason = computed(() => profile.value?.suspendReason || 'حساب شما توسط ادمین معلق شده است. فقط بخش پشتیبانی در دسترس است.');
 
 const navItems = [
   { to: '/dashboard', name: 'broker-dashboard', icon: 'fa-solid fa-gauge-high', label: 'داشبورد' },
   { to: '/deals',relatedLinks: ['broker-deal-detail'], name: 'broker-deals', icon: 'fa-solid fa-briefcase', label: 'کارتابل معاملات' },
+  { to: '/conversations', relatedLinks: ['broker-conversations'], name: 'broker-conversations', icon: 'fa-solid fa-comments', label: 'گفتگوها' },
   { to: '/notifications', name: 'broker-notifications', icon: 'fa-solid fa-bell', label: 'نوتیفیکیشن ها' },
   { to: '/validity', name: 'broker-validity', icon: 'fa-solid fa-wallet', label: 'اعتبارات' },
   { to: '/profile', name: 'broker-profile', icon: 'fa-solid fa-user-pen', label: 'پروفایل' },
@@ -42,6 +44,7 @@ const pageTitle = computed(() => {
     'broker-dashboard': 'داشبورد کارگزار',
     'broker-deals': 'کارتابل معاملات',
     'broker-deal-detail': 'جزئیات معامله',
+    'broker-conversations': 'گفتگوهای معاملات',
     'broker-notifications': 'نوتیفیکیشن ها',
     'broker-validity': 'اعتبارات',
     'broker-profile': 'پروفایل',
@@ -126,6 +129,20 @@ const loadDealSummary = async () => {
     dealSummary.value = data.summary || dealSummary.value;
   } catch (_) {
     dealSummary.value = { total: 0, inProgress: 0, failed: 0, suspended: 0, done: 0, waitingCustomer: 0, waitingBroker: 0, waitingAdmin: 0, verifyBroker: 0 };
+  }
+};
+
+const loadConversationUnreadTotal = async () => {
+  if (isSuspended.value) {
+    conversationUnreadTotal.value = 0;
+    return;
+  }
+
+  try {
+    const data = await getBrokerConversations();
+    conversationUnreadTotal.value = Number(data.totalUnreadCount || 0);
+  } catch (_) {
+    conversationUnreadTotal.value = 0;
   }
 };
 
@@ -221,6 +238,7 @@ const handleNotificationUpdate = () => {
 
 const handleDealUpdate = () => {
   loadDealSummary();
+  loadConversationUnreadTotal();
 };
 
 const handleAccountSuspended = (event) => {
@@ -245,6 +263,7 @@ onMounted(() => {
   loadProfile();
   loadNotifications();
   loadDealSummary();
+  loadConversationUnreadTotal();
   window.addEventListener(ACCOUNT_SUSPENDED_EVENT, handleAccountSuspended);
   window.addEventListener('broker-profile-updated', handleProfileUpdate);
   window.addEventListener('broker-notification-updated', handleNotificationUpdate);
@@ -375,6 +394,7 @@ onBeforeUnmount(() => {
           <span>{{ item.label }}</span>
           <span v-if="item.name === 'broker-notifications' && notificationSummary.unread" class="nav-badge">{{ unreadCount }}</span>
           <span v-if="item.name === 'broker-deals' && dealSummary.waitingBroker" class="nav-badge">{{ dealSummary.waitingBroker }}</span>
+          <span v-if="item.name === 'broker-conversations' && conversationUnreadTotal" class="nav-badge">{{ conversationUnreadTotal }}</span>
         </router-link>
       </nav>
 

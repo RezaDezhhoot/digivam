@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import AppPagination from '../components/AppPagination.vue';
+import Select2Input from '../components/Select2Input.vue';
 import {
   createBrokerFacility,
   getBrokerFacilities,
@@ -23,6 +24,7 @@ const limit = ref(10);
 const total = ref(0);
 const search = ref('');
 const statusFilter = ref('');
+const loanTypeFilter = ref('');
 const profitInput = ref('');
 const installmentInput = ref('');
 const items = ref([]);
@@ -90,6 +92,13 @@ const selectedLoanType = computed(() =>
   options.value.loanTypes.find((item) => Number(item.id) === Number(form.value.subTypeId)) || null
 );
 
+const loanTypeSelectOptions = computed(() =>
+  (options.value.loanTypes || []).map((item) => ({
+    id: item.id,
+    label: `${item.title} - ${item.typeLabel}`
+  }))
+);
+
 const editingLabel = computed(() => (form.value.id ? `${form.value.title || 'بدون عنوان'} - #${form.value.id}` : ''));
 
 const summaryCards = computed(() => [
@@ -126,6 +135,10 @@ const buildQuery = ({ page: nextPage = page.value, limit: nextLimit = limit.valu
 
   if (statusFilter.value) {
     params.set('status', statusFilter.value);
+  }
+
+  if (loanTypeFilter.value) {
+    params.set('loanTypeId', String(loanTypeFilter.value));
   }
 
   return `?${params.toString()}`;
@@ -228,6 +241,7 @@ const applyFilters = async () => {
 const clearFilters = async () => {
   search.value = '';
   statusFilter.value = '';
+  loanTypeFilter.value = '';
   page.value = 1;
   await load();
 };
@@ -443,10 +457,14 @@ onMounted(async () => {
           </div>
           <div class="col-12 col-lg-6">
             <label class="form-label form-label-required">نوع وام</label>
-            <select v-model="form.subTypeId" class="form-select">
-              <option value="">انتخاب نوع وام</option>
-              <option v-for="loanType in options.loanTypes" :key="loanType.id" :value="loanType.id">{{ loanType.title }} - {{ loanType.typeLabel }}</option>
-            </select>
+            <Select2Input
+              v-model="form.subTypeId"
+              :options="loanTypeSelectOptions"
+              label-key="label"
+              value-key="id"
+              number
+              placeholder="انتخاب نوع وام"
+            />
           </div>
           <div class="col-12 col-md-6 col-lg-4">
             <label class="form-label form-label-required">حداقل مبلغ</label>
@@ -663,6 +681,14 @@ onMounted(async () => {
             <option value="">همه وضعیت ها</option>
             <option v-for="item in options.statuses" :key="item.value" :value="item.value">{{ item.label }}</option>
           </select>
+          <Select2Input
+            v-model="loanTypeFilter"
+            :options="loanTypeSelectOptions"
+            label-key="label"
+            value-key="id"
+            number
+            placeholder="همه نوع‌های وام"
+          />
           <button class="btn btn-outline-secondary" @click="clearFilters">
             <i class="fa-solid fa-rotate-left me-1"></i> پاکسازی
           </button>

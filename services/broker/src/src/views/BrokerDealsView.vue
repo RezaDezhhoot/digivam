@@ -5,6 +5,7 @@ import Swal from 'sweetalert2';
 import AppPagination from '../components/AppPagination.vue';
 import BrokerDealContractStage from '../components/BrokerDealContractStage.vue';
 import DealChatModal from '../components/DealChatModal.vue';
+import Select2Input from '../components/Select2Input.vue';
 import {
   getBrokerDeal,
   getBrokerDeals,
@@ -15,6 +16,7 @@ import {
   sendBrokerDealMessage,
   submitBrokerDealTransfer
 } from '../services/broker-deal.api.js';
+import { getBrokerFacilityOptions } from '../services/broker-facility.api.js';
 import { useAppToast } from '../composables/useToast.js';
 import { truncateWords } from '../../../../web/src/src/utils/str.js';
 import { extractRawAmountInput, formatAmountInWords, formatAmountInputDisplay } from '../../../../web/src/src/utils/amount.js';
@@ -36,11 +38,12 @@ const selectedItem = ref(null);
 const activeStageTab = ref('base');
 const resultHistoryOpen = ref(false);
 const summary = ref({ total: 0, inProgress: 0, failed: 0, suspended: 0, done: 0, waitingCustomer: 0, waitingBroker: 0, waitingAdmin: 0, verifyBroker: 0 });
-const filters = ref({ status: '', step: '' });
+const filters = ref({ status: '', step: '', loanTypeId: '' });
 const reviewReason = ref('');
 const localQuery = ref('');
 const chatOpen = ref(false);
 const chatUnreadCount = ref(0);
+const loanTypeOptions = ref([]);
 let unreadPollTimer = null;
 
 const paymentMethodCatalog = [
@@ -101,12 +104,19 @@ const filteredItems = computed(() => {
 });
 
 const summaryCards = computed(() => [
-  { label: 'کل معاملات', value: summary.value.total, filters: { status: '', step: '' }, tone: 'neutral' },
-  { label: 'در جریان', value: summary.value.inProgress, filters: { status: 'in_progress', step: '' }, tone: 'info' },
-  { label: 'بررسی کارگزار', value: summary.value.verifyBroker, filters: { status: '', step: 'verify_broker' }, tone: 'warning' },
-  { label: 'انجام شده', value: summary.value.done, filters: { status: 'done', step: '' }, tone: 'success' },
-  { label: 'ناموفق', value: summary.value.failed, filters: { status: 'failed', step: '' }, tone: 'danger' }
+  { label: 'کل معاملات', value: summary.value.total, filters: { status: '', step: '', loanTypeId: '' }, tone: 'neutral' },
+  { label: 'در جریان', value: summary.value.inProgress, filters: { status: 'in_progress', step: '', loanTypeId: '' }, tone: 'info' },
+  { label: 'بررسی کارگزار', value: summary.value.verifyBroker, filters: { status: '', step: 'verify_broker', loanTypeId: '' }, tone: 'warning' },
+  { label: 'انجام شده', value: summary.value.done, filters: { status: 'done', step: '', loanTypeId: '' }, tone: 'success' },
+  { label: 'ناموفق', value: summary.value.failed, filters: { status: 'failed', step: '', loanTypeId: '' }, tone: 'danger' }
 ]);
+
+const loanTypeSelectOptions = computed(() =>
+  loanTypeOptions.value.map((item) => ({
+    id: item.id,
+    label: `${item.title} - ${item.typeLabel}`
+  }))
+);
 
 const formatNumber = (value) => new Intl.NumberFormat('fa-IR').format(Number(value || 0));
 const formatMoney = (value) => `${formatNumber(value)} تومان`;
@@ -308,7 +318,20 @@ const buildQuery = ({ page: nextPage = page.value, limit: nextLimit = limit.valu
     params.set('step', filters.value.step);
   }
 
+  if (filters.value.loanTypeId) {
+    params.set('loanTypeId', String(filters.value.loanTypeId));
+  }
+
   return `?${params.toString()}`;
+};
+
+const loadLoanTypeOptions = async () => {
+  try {
+    const data = await getBrokerFacilityOptions();
+    loanTypeOptions.value = Array.isArray(data.loanTypes) ? data.loanTypes : [];
+  } catch {
+    loanTypeOptions.value = [];
+  }
 };
 
 const exportDealsToExcel = async () => {
@@ -429,7 +452,7 @@ const applyFilters = async () => {
 };
 
 const clearFilters = async () => {
-  filters.value = { status: '', step: '' };
+  filters.value = { status: '', step: '', loanTypeId: '' };
   page.value = 1;
   if (selectedId.value) {
     await router.push('/deals');
@@ -647,109 +670,129 @@ watch(chatOpen, (open) => {
 
 onMounted(() => {
   load();
+  loadLoanTypeOptions();
 });
 onUnmounted(stopUnreadPoll);
 </script>
 
 <template>
   <section class="animate-in">
-    <div class="page-header">
-      <div class="page-header-copy">
-        <div class="page-header-icon"><i class="fa-solid fa-briefcase"></i></div>
-        <div>
-          <h1 class="page-header-title">کارتابل معاملات</h1>
-          <p class="page-header-desc">پرونده های ایجاد شده برای مشتریان، مرحله جاری و مدارک ارسالی را از اینجا دنبال کنید.</p>
+    <div class="broker-deals-hero">
+      <div class="hero-content">
+        <div class="hero-icon"><i class="fa-solid fa-briefcase"></i></div>
+        <div class="hero-text">
+          <h1>کارتابل معاملات</h1>
+          <p>پرونده‌های ایجاد شده، مرحله جاری و مدارک ارسالی را از اینجا دنبال کنید.</p>
         </div>
       </div>
-      <div class="d-flex gap-2 flex-wrap">
-        <button class="btn btn-outline-secondary" :disabled="exportLoading" @click="exportDealsToExcel">
-          <i v-if="exportLoading" class="fa-solid fa-spinner fa-spin me-1"></i>
-          <i v-else class="fa-solid fa-file-excel me-1"></i>
+      <div class="hero-actions">
+        <button class="hero-btn ghost" :disabled="exportLoading" @click="exportDealsToExcel">
+          <i v-if="exportLoading" class="fa-solid fa-spinner fa-spin"></i>
+          <i v-else class="fa-solid fa-file-excel"></i>
           خروجی اکسل
         </button>
-        <router-link class="btn btn-primary" to="/loan/create">
-          <i class="fa-solid fa-file-invoice-dollar me-1"></i>
+        <router-link class="hero-btn solid" to="/loan/create">
+          <i class="fa-solid fa-plus"></i>
           ثبت امتیاز وام
         </router-link>
       </div>
     </div>
 
-    <div v-if="!selectedId" class="summary-grid mt-3" :class="{ 'summary-grid-loading': summaryLoading }">
+    <div v-if="!selectedId" class="kpi-strip" :class="{ 'kpi-loading': summaryLoading }">
       <button
         v-for="card in summaryCards"
         :key="card.label"
         type="button"
-        class="summary-card"
-        :class="`summary-card-${card.tone}`"
+        class="kpi-card"
+        :class="`kpi-${card.tone}`"
         @click="applySummaryFilter(card)"
       >
-        <span>{{ card.label }}</span>
-        <strong>{{ formatNumber(card.value) }}</strong>
+        <div class="kpi-value">{{ formatNumber(card.value) }}</div>
+        <div class="kpi-label">{{ card.label }}</div>
       </button>
     </div>
 
-    <div v-if="!selectedId" class="content-card mt-3">
-      <div class="filter-row">
-        <select v-model="filters.status" class="form-select">
-          <option v-for="item in statusOptions" :key="item.value || 'all-status'" :value="item.value">{{ item.label }}</option>
-        </select>
-        <select v-model="filters.step" class="form-select">
-          <option v-for="item in stepOptions" :key="item.value || 'all-step'" :value="item.value">{{ item.label }}</option>
-        </select>
-        <div class="filter-actions">
-          <button class="btn btn-primary" @click="applyFilters">اعمال</button>
-          <button class="btn btn-outline-secondary" @click="clearFilters">پاکسازی</button>
+    <div v-if="!selectedId" class="deals-workspace">
+      <div class="toolbar">
+        <div class="toolbar-filters">
+          <select v-model="filters.status" class="form-select">
+            <option v-for="item in statusOptions" :key="item.value || 'all-status'" :value="item.value">{{ item.label }}</option>
+          </select>
+          <select v-model="filters.step" class="form-select">
+            <option v-for="item in stepOptions" :key="item.value || 'all-step'" :value="item.value">{{ item.label }}</option>
+          </select>
+          <Select2Input
+            v-model="filters.loanTypeId"
+            :options="loanTypeSelectOptions"
+            label-key="label"
+            value-key="id"
+            number
+            placeholder="همه نوع‌های وام"
+          />
+          <div class="toolbar-actions">
+            <button class="toolbar-btn primary" @click="applyFilters"><i class="fa-solid fa-check"></i> اعمال</button>
+            <button class="toolbar-btn" @click="clearFilters"><i class="fa-solid fa-rotate-right"></i> پاکسازی</button>
+          </div>
         </div>
+        <label class="toolbar-search">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input v-model="localQuery" type="search" class="form-control" placeholder="جستجوی سریع..." />
+        </label>
       </div>
 
-      <div class="board-grid mt-3">
-        <div class="list-pane">
-          <div class="list-pane-head">
-            <div>
-              <strong>فهرست پرونده‌ها</strong>
-              <span>{{ formatNumber(filteredItems.length) }} پرونده در این صفحه</span>
+      <div class="list-meta">
+        <span><strong>{{ formatNumber(filteredItems.length) }}</strong> پرونده</span>
+      </div>
+
+      <div v-if="listLoading" class="state-card">
+        <div class="state-spinner"></div>
+        <span>در حال بارگذاری پرونده‌ها...</span>
+      </div>
+      <div v-else-if="!filteredItems.length" class="state-card empty">
+        <i class="fa-solid fa-folder-open"></i>
+        <h3>{{ items.length ? 'نتیجه‌ای برای جستجوی شما پیدا نشد' : 'معامله‌ای پیدا نشد' }}</h3>
+        <p>{{ items.length ? 'عبارت جستجو را تغییر دهید یا فیلترها را سبک‌تر کنید.' : 'برای فیلترهای انتخابی هنوز موردی ثبت نشده است.' }}</p>
+      </div>
+      <div v-else class="deal-feed">
+        <button
+          v-for="item in filteredItems"
+          :key="item.id"
+          type="button"
+          class="deal-row"
+          :class="[`tone-${item.status}`, { active: selectedId === item.id, 'my-turn': isBrokerTurn(item) }]"
+          @click="openItem(item.id)"
+        >
+          <div class="deal-row-indicator"></div>
+          <div class="deal-row-body">
+            <div class="deal-row-top">
+              <div class="deal-row-identity">
+                <span class="deal-code">{{ item.dealCode || `#${formatNumber(item.id)}` }}</span>
+                <h2 class="deal-title">{{ item.facility?.title || 'بدون عنوان' }}</h2>
+              </div>
+              <span class="pill" :class="`pill-${item.status}`">{{ item.statusLabel }}</span>
             </div>
-            <label class="list-pane-search">
-              <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-              <input v-model="localQuery" type="search" class="form-control" placeholder="جستجو بر اساس مشتری، وام یا شماره پرونده" />
-            </label>
-          </div>
-
-          <div v-if="listLoading" class="spinner-overlay"><i class="fa-solid fa-spinner fa-spin"></i> در حال بارگذاری...</div>
-          <div v-else-if="!filteredItems.length" class="empty-card compact-empty">
-            <i class="fa-solid fa-inbox empty-icon"></i>
-            <h3>{{ items.length ? 'نتیجه‌ای برای جستجوی شما پیدا نشد' : 'معامله ای پیدا نشد' }}</h3>
-            <p>{{ items.length ? 'عبارت جستجو را تغییر دهید یا فیلترها را سبک‌تر کنید.' : 'برای فیلترهای انتخابی هنوز موردی ثبت نشده است.' }}</p>
-          </div>
-          <div v-else class="deal-list">
-            <button
-              v-for="item in filteredItems"
-              :key="item.id"
-              type="button"
-              class="deal-card"
-              :class="{ active: selectedId === item.id, 'act-by-marked': isBrokerTurn(item) }"
-              @click="openItem(item.id)"
-            >
-              <div class="deal-card-head">
-                <strong>{{ item.dealCode || `#${formatNumber(item.id)}` }}</strong>
-                <span class="status-pill" :class="`status-pill-${item.status}`">{{ item.statusLabel }}</span>
+            <div class="deal-row-info">
+              <span class="info-chip"><i class="fa-solid fa-user"></i> {{ item.customer?.name || 'مشتری' }}</span>
+              <span class="info-chip muted"><i class="fa-solid fa-layer-group"></i> {{ item.typeLabel || item.facility?.typeLabel || '-' }}</span>
+              <span class="info-chip muted"><i class="fa-solid fa-stairs"></i> {{ item.stepLabel }}</span>
+              <span class="info-chip muted"><i class="fa-solid fa-user-clock"></i> {{ item.actByLabel }}</span>
+            </div>
+            <div v-if="item.adminReviewMode" class="deal-row-alert">
+              <i class="fa-solid fa-shield-halved"></i>
+              <span>در بررسی مدیریت: {{ getAdminReviewReason(item) }}</span>
+            </div>
+            <div class="deal-row-footer">
+              <strong class="deal-amount">{{ formatMoney(item.amount) }}</strong>
+              <div class="deal-row-footer-end">
+                <span v-if="isBrokerTurn(item)" class="turn-badge"><i class="fa-solid fa-bolt"></i> نوبت شما</span>
+                <span class="deal-date">{{ item.updatedAtLabel }}</span>
               </div>
-              <h2 class="deal-card-title">{{ item.facility?.title || 'بدون عنوان' }}</h2>
-              <div class="deal-card-chip-row">
-                <span class="deal-meta-chip">{{ item.customer?.name || 'مشتری' }}</span>
-                <span class="deal-meta-chip muted">{{ item.typeLabel || item.facility?.typeLabel || '-' }}</span>
-              </div>
-              <div v-if="item.adminReviewMode" class="deal-card-meta admin-review-note">در بررسی مدیریت: {{ getAdminReviewReason(item) }}</div>
-              <div class="deal-card-meta strong">{{ formatMoney(item.amount) }}</div>
-              <div class="deal-card-meta">مرحله: {{ item.stepLabel }} | اقدام: {{ item.actByLabel }}</div>
-              <div v-if="isBrokerTurn(item)" class="deal-card-meta"><span class="act-by-mark-chip">نوبت اقدام شما</span></div>
-              <div class="deal-card-meta">{{ item.updatedAtLabel }}</div>
-            </button>
+            </div>
           </div>
-
-          <AppPagination :page="page" :limit="limit" :total="total" :disabled="listLoading" @change="changePage" />
-        </div>
+        </button>
       </div>
+
+      <AppPagination :page="page" :limit="limit" :total="total" :disabled="listLoading" @change="changePage" />
     </div>
 
     <div v-else class="detail-route-shell mt-3">

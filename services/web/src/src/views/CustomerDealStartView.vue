@@ -80,6 +80,23 @@ const jalaliDateTimeFormatter = new Intl.DateTimeFormat('fa-IR-u-ca-persian', {
 const formatNumber = (value) => new Intl.NumberFormat('fa-IR').format(Number(value || 0));
 const formatMoney = (value) => `${formatNumber(value)} تومان`;
 
+const clearPaymentReturnQuery = async () => {
+  const nextQuery = { ...route.query };
+  delete nextQuery.cashVerify;
+  delete nextQuery.Authority;
+  delete nextQuery.Status;
+  delete nextQuery.paymentTypeId;
+
+  if (
+    nextQuery.cashVerify !== route.query.cashVerify ||
+    nextQuery.Authority !== route.query.Authority ||
+    nextQuery.Status !== route.query.Status ||
+    nextQuery.paymentTypeId !== route.query.paymentTypeId
+  ) {
+    await router.replace({ path: route.path, query: nextQuery });
+  }
+};
+
 const formatFileSize = (bytes) => {
   const size = Number(bytes || 0);
   if (!size) {
@@ -744,7 +761,11 @@ const load = async () => {
           }
         } catch {
           setErrorFeedback('خطا در تایید پرداخت', []);
+        } finally {
+          await clearPaymentReturnQuery();
         }
+      } else {
+        await clearPaymentReturnQuery();
       }
     }
   } catch (error) {
@@ -1444,9 +1465,14 @@ onUnmounted(stopTransferOtpTimer);
 
             <section v-if="deal && activeStageTab === 'transfer'" class="deal-card deal-wait-stage">
               <div class="deal-wait-icon"><i class="fa-solid fa-hourglass-half"></i></div>
-              <div>
+              <div class="deal-wait-copy">
+                <span class="deal-wait-badge">در انتظار اقدام کارگزار</span>
                 <h3>در انتظار ثبت اطلاعات {{ transferStageTitle }} توسط کارگزار</h3>
                 <p>کارگزار باید در این مرحله توضیحات {{ transferStageTitle }} و فایل‌های مرتبط را ثبت کند. پس از تکمیل این بخش، جزئیات از همین صفحه نمایش داده می‌شود.</p>
+                <div class="deal-wait-meta">
+                  <span>وضعیت پرونده: {{ deal.statusLabel || '-' }}</span>
+                  <span>مرحله فعلی: {{ deal.stepLabel || '-' }}</span>
+                </div>
               </div>
             </section>
 
@@ -1683,7 +1709,7 @@ onUnmounted(stopTransferOtpTimer);
               <div>
                 <span class="transfer-otp-kicker">تایید OTP</span>
                 <h4>کد تایید {{ transferStageTitle }} را وارد کنید</h4>
-                <p>کد ۴ رقمی پیامک شده را وارد کنید. ارسال مجدد هر ۲ دقیقه فعال می‌شود.</p>
+                <p>اگر پیامک قبلا ارسال شده باشد، مستقیم همین فرم را می‌بینید. ارسال مجدد هر ۲ دقیقه فعال می‌شود.</p>
               </div>
               <button type="button" class="transfer-otp-close" @click="transferOtpOpen = false">×</button>
             </div>

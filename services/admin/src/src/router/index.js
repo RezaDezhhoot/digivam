@@ -21,6 +21,7 @@ const routes = [
       { path: '', name: 'dashboard', component: DashboardView },
       { path: 'deals', name: 'deals', component: AdminDealsView },
       { path: 'deals/:id', name: 'deal-detail', component: AdminDealsView },
+      { path: 'conversations/:dealId?', name: 'admin-conversations', component: () => import('../views/ConversationsView.vue') },
       { path: 'brokers', name: 'brokers', component: LoanApprovalsView },
       { path: 'customers', name: 'customers', component: UsersView },
       {

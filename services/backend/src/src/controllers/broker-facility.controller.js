@@ -130,11 +130,16 @@ export const listBrokerFacilities = async (req, res, next) => {
   try {
     const search = normalizeSearch(req.query.search);
     const status = normalizeSearch(req.query.status);
+    const loanTypeId = req.query.loanTypeId ? Number(req.query.loanTypeId) : null;
     const { page, limit, offset } = getPagination(req.query);
     const where = { brokerId: req.auth.sub };
 
     if (status) {
       where.status = status;
+    }
+
+    if (loanTypeId) {
+      where.subTypeId = loanTypeId;
     }
 
     if (search) {
